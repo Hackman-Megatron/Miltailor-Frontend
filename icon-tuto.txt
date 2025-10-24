@@ -1,0 +1,38 @@
+Parfait ! Pour Windows, voici la meilleure solution avec un outil pratique :
+
+## **Solution recommandée : Créer un raccourci avec icône personnalisée**
+
+Je vais vous créer un script qui automatise la création du raccourci. Mais d'abord, voici la méthode manuelle simple :
+
+### **Méthode rapide (sans outil)**
+
+1. **Clic droit sur le bureau** → **"Nouveau"** → **"Raccourci"**
+
+2. **Dans le champ "Emplacement"**, collez :
+   ```
+   "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:3000
+   ```
+   *(Remplacez `3000` par le port de votre application)*
+
+3. **Cliquez sur "Suivant"**, donnez un nom (ex: "Mon App Web")
+
+4. **Cliquez sur "Terminer"**
+
+### **Pour ajouter une icône personnalisée :**
+1. **Clic droit sur le raccourci** → **"Propriétés"**
+2. Onglet **"Raccourci"** → **"Changer d'icône"**
+3. Choisissez une icône Windows ou **"Parcourir"** pour une icône `.ico` personnalisée
+
+---
+
+## **Outil automatique : Script PowerShell**
+
+Voulez-vous que je vous crée un **script PowerShell** qui :
+- Crée automatiquement le raccourci
+- Vous demande l'URL de votre application
+- Vous permet de choisir une icône
+- Place le raccourci sur votre bureau
+
+Si oui, je peux le générer pour vous ! Sinon, la méthode manuelle ci-dessus est très rapide. 
+
+**Quel est le port de votre application locale ?** (ex: localhost:3000, localhost:8080, etc.)
