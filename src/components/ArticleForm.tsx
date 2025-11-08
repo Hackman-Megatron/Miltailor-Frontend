@@ -18,8 +18,6 @@ export default function ArticleForm({ article, type, onSubmit, onCancel }: Artic
     institution: article?.institution || '',
     quantite: article?.quantite || 0,
     unite_mesure: article?.unite_mesure || '',
-    emplacement: article?.emplacement || '',
-    etagere: article?.etagere || '',
   });
 
   useEffect(() => {
@@ -48,7 +46,7 @@ export default function ArticleForm({ article, type, onSubmit, onCancel }: Artic
     e.preventDefault();
     setLoading(true);
     try {
-      await onSubmit({ ...formData, type });
+      await onSubmit({ ...formData, type, institution: formData.institution });
     } finally {
       setLoading(false);
     }
@@ -90,23 +88,29 @@ export default function ArticleForm({ article, type, onSubmit, onCancel }: Artic
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Institution <span className="text-red-500">*</span>
-          </label>
-          <select
-            required
-            value={formData.institution}
-            onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-          >
-            <option value="">Sélectionner une institution</option>
-            <option value="FAB">FAB - Forces Armées Béninoises</option>
-            <option value="Police">Police Nationale</option>
-            <option value="Gendarmerie">Gendarmerie</option>
-            <option value="Sapeurs-Pompiers">Sapeurs-Pompiers</option>
-          </select>
-        </div>
+        {type === 'uniforme_fini' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Institution <span className="text-red-500">*</span>
+            </label>
+            <select
+              required
+              value={formData.institution}
+              onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
+            >
+              <option value="">Sélectionner une institution</option>
+              <option value="forêt">Forêt</option>
+              <option value="sahel">Sahel</option>
+              <option value="sapeurs-pompiers">Sapeurs-pompiers</option>
+              <option value="pompiers">Pompiers</option>
+              <option value="gendarmerie">Gendarmerie</option>
+              <option value="armée">Armée</option>
+              <option value="air">Air</option>
+              <option value="marine">Marine</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -117,9 +121,9 @@ export default function ArticleForm({ article, type, onSubmit, onCancel }: Artic
               type="number"
               required
               min="0"
-              step="0.01"
+              step="1"
               value={formData.quantite}
-              onChange={(e) => setFormData({ ...formData, quantite: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => setFormData({ ...formData, quantite: parseInt(e.target.value) || 0 })}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
             />
             <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm text-gray-700 flex items-center min-w-[100px] justify-center">
@@ -128,33 +132,6 @@ export default function ArticleForm({ article, type, onSubmit, onCancel }: Artic
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Emplacement <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={formData.emplacement}
-            onChange={(e) => setFormData({ ...formData, emplacement: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-            placeholder="Ex: Entrepôt A"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Étagère <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={formData.etagere}
-            onChange={(e) => setFormData({ ...formData, etagere: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-            placeholder="Ex: A-12"
-          />
-        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

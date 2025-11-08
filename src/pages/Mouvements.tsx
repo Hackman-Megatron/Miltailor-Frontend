@@ -118,28 +118,46 @@ export const Mouvements = () => {
     }
 
     try {
+      setLoading(true);
+
       const filters = {
-        type: filterType || 'Tous les types'
+        type: filterType || 'Tous les types',
+        nombre_mouvements: mouvements.length.toString(),
+        periode: 'Toutes les dates'
       };
 
-      const response = await pdfService.generateReport('mouvements', mouvements, filters);
+      console.log('[MOUVEMENTS PDF] Envoi des filtres:', filters);
 
-      if (response.data.success) {
-        const downloadResponse = await pdfService.downloadReport(response.data.filename);
-        const blob = new Blob([downloadResponse.data], { type: 'text/html' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = response.data.filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        setToast({ message: 'Rapport exporté avec succès', type: 'success' });
-      }
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      setToast({ message: 'Erreur lors de l\'export', type: 'error' });
+      // Appel direct à la nouvelle route
+      const response = await pdfService.generateMouvementsReport(filters);
+      
+      // Créer le blob et déclencher le téléchargement
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `rapport-mouvements-${new Date().toISOString().slice(0, 10)}.pdf`;
+      
+      document.body.appendChild(a);
+      a.click();
+      
+      // Nettoyage
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setToast({ 
+        message: `Rapport exporté avec succès (${mouvements.length} mouvements)`, 
+        type: 'success' 
+      });
+    } catch (error: any) {
+      console.error('[MOUVEMENTS PDF] Erreur:', error);
+      setToast({ 
+        message: error.response?.data?.message || 'Erreur lors de l\'export du rapport', 
+        type: 'error' 
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -256,8 +274,8 @@ export const Mouvements = () => {
                             {mouvement.type}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">{mouvement.article_nom}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{mouvement.quantite}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{mouvement.article_nom || mouvement.notes || 'N/A'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{Math.floor(mouvement.quantite)}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{mouvement.source_destination}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{mouvement.reference}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{mouvement.utilisateur_nom}</td>
@@ -327,11 +345,15 @@ export const Mouvements = () => {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Article</label>
-                <p className="text-base text-gray-900">{viewingMouvement.article_nom}</p>
+                <p className="text-base text-gray-900">{viewingMouvement.article_nom || viewingMouvement.notes || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Quantité</label>
-                <p className="text-base font-semibold text-gray-900">{viewingMouvement.quantite}</p>
+                <p className="text-base font-semibold text-gray-900">{Math.floor(viewingMouvement.quantite)}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Quantification</label>
+                <p className="text-base font-semibold text-gray-900">{viewingMouvement.quantification}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Source/Destination</label>

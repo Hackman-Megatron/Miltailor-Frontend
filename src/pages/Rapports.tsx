@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { FileText, Download, Calendar, TrendingUp, DollarSign, ShoppingCart, Package, CheckCircle } from 'lucide-react';
+import { FileText, Download, Calendar, TrendingUp, ShoppingCart, Package, CheckCircle } from 'lucide-react';
 import { DashboardLayout } from '../layouts/DashboardLayout';
 import { rapportsService } from '../services/api';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatDate } from '../utils/formatters';
 import { Toast } from '../components/Toast';
-import { RapportSummary, Historique } from '../types';
+import { Historique } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { StatCard } from '../components/StatCard';
 
@@ -237,54 +237,27 @@ export const Rapports = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard
                     title="Total Transactions"
-                    value={summary.total_transactions.toString()}
+                    value={summary.total_transactions?.toString() || '0'}
                     icon={TrendingUp}
                     trend="up"
                   />
                   <StatCard
                     title="Commandes Livrées"
-                    value={formatCurrency(summary.total_montant_commandes_livrees || 0)}
+                    value={summary.nombre_commandes_livrees?.toString() || '0'}
                     icon={CheckCircle}
-                    subtitle={`${summary.nombre_commandes_livrees || 0} commande(s)`}
+                    subtitle={`${summary.total_quantite_commandes_livrees || 0} unités`}
                     trend="up"
                   />
                   <StatCard
                     title="Total Commandes"
-                    value={summary.commandes.toString()}
+                    value={summary.commandes?.toString() || '0'}
                     icon={ShoppingCart}
                   />
                   <StatCard
                     title="Mouvements"
-                    value={summary.mouvements.toString()}
+                    value={summary.mouvements?.toString() || '0'}
                     icon={Package}
                   />
-                </div>
-
-                {/* Section supplémentaire pour afficher les détails des commandes livrées */}
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-green-600 rounded-lg">
-                      <CheckCircle className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Récapitulatif des Livraisons</h3>
-                      <p className="text-sm text-gray-600">Montant total des commandes livrées sur la période</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg p-4 shadow-sm">
-                      <p className="text-sm text-gray-600 mb-1">Nombre de commandes livrées</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {summary.nombre_commandes_livrees || 0}
-                      </p>
-                    </div>
-                    <div className="bg-white rounded-lg p-4 shadow-sm">
-                      <p className="text-sm text-gray-600 mb-1">Montant cumulé</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {formatCurrency(summary.total_montant_commandes_livrees || 0)}
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -350,7 +323,7 @@ export const Rapports = () => {
                           Utilisateur
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Montant
+                          Détails
                         </th>
                       </tr>
                     </thead>
@@ -363,12 +336,12 @@ export const Rapports = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
                             {item.type_activite}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.action}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900">{item.action}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {item.utilisateur_nom || 'Système'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                            {item.montant ? formatCurrency(item.montant) : '-'}
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {item.details || '-'}
                           </td>
                         </tr>
                       ))}

@@ -42,6 +42,11 @@ export const Stocks = () => {
       if (searchTerm) params.search = searchTerm;
       if (selectedCategory) params.categorie = selectedCategory;
 
+      // Pour les uniformes finis, on ajoute un filtre pour ne montrer que ceux avec quantité > 0
+      if (activeTab === 'uniformes') {
+        params.quantite_min = 1;
+      }
+
       const [articlesRes, categoriesRes] = await Promise.all([
         articlesService.getAll(params),
         categoriesService.getAll(),
@@ -63,7 +68,6 @@ export const Stocks = () => {
       setLoading(false);
     }
   };
-
 
   const filteredArticles = articles;
 
@@ -123,37 +127,70 @@ export const Stocks = () => {
     }
   };
 
-  const handleExportPDF = async () => {
-    if (filteredArticles.length === 0) {
-      setToast({ message: 'Aucune donnée à exporter', type: 'warning' });
-      return;
-    }
+  // Remplacer la fonction handleExportPDF dans votre composant Stocks.tsx
 
-    try {
-      const filters = {
-        type: activeTab === 'matieres' ? 'Matières premières' : 'Uniformes finis',
-        catégorie: selectedCategory || 'Toutes',
-        recherche: searchTerm || '-'
-      };
+const handleExportPDF = async () => {
+  if (filteredArticles.length === 0) {
+    setToast({ message: 'Aucune donnée à exporter', type: 'warning' });
+    return;
+  }
 
-      const response = await pdfService.generateReport('stocks', filteredArticles, filters);
+  try {
+    setLoading(true);
+    
+    const filters = {
+      type: activeTab === 'matieres' ? 'Matières premières' : 'Uniformes finis',
+      categorie: selectedCategory || 'Toutes',
+      search: searchTerm || '',
+      statut: 'Tous',
+      institution: 'Toutes'
+    };
 
-      if (response.data.success) {
-        const downloadResponse = await pdfService.downloadReport(response.data.filename);
-        const blob = new Blob([downloadResponse.data], { type: 'text/html' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = response.data.filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        setToast({ message: 'Rapport exporté avec succès', type: 'success' });
-      }
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      setToast({ message: 'Erreur lors de l\'export', type: 'error' });
+    console.log('[STOCKS PDF] Envoi des filtres:', filters);
+
+    // Appel direct à la nouvelle route
+    const response = await pdfService.generateStocksReport(filters);
+    
+    // Créer le blob et déclencher le téléchargement
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `rapport-stocks-${new Date().toISOString().slice(0, 10)}.pdf`;
+    
+    document.body.appendChild(a);
+    a.click();
+    
+    // Nettoyage
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    setToast({ 
+      message: `Rapport exporté avec succès (${filteredArticles.length} articles)`, 
+      type: 'success' 
+    });
+  } catch (error: any) {
+    console.error('[STOCKS PDF] Erreur:', error);
+    setToast({ 
+      message: error.response?.data?.message || 'Erreur lors de l\'export du rapport', 
+      type: 'error' 
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+  // NOUVELLE FONCTION: Gérer le changement de catégorie
+  const handleCategoryChange = (categoryName: string) => {
+    setSelectedCategory(categoryName);
+    setCurrentPage(1);
+    
+    // Si la catégorie sélectionnée est "Uniformes", basculer vers l'onglet uniformes
+    if (categoryName.toLowerCase() === 'uniformes') {
+      setActiveTab('uniformes');
+      // Réinitialiser la catégorie pour ne pas filtrer (optionnel)
+      // Décommentez la ligne suivante si vous voulez afficher TOUS les uniformes
+      // setSelectedCategory('');
     }
   };
 
@@ -161,7 +198,14 @@ export const Stocks = () => {
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Gestion des Stocks</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Gestion des Stocks</h1>
+            {activeTab === 'uniformes' && (
+              <p className="text-sm text-gray-600 mt-1">
+                Affichage des uniformes finis terminés uniquement (quantité {'>'} 0)
+              </p>
+            )}
+          </div>
           <div className="flex gap-3">
             <button
               onClick={handleExportPDF}
@@ -170,16 +214,6 @@ export const Stocks = () => {
               <Download className="w-4 h-4" />
               Exporter PDF
             </button>
-            <button
-              onClick={() => {
-                setEditingArticle(null);
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Nouvel Article
-            </button>
           </div>
         </div>
 
@@ -187,7 +221,11 @@ export const Stocks = () => {
           <div className="border-b border-gray-200">
             <div className="flex">
               <button
-                onClick={() => setActiveTab('matieres')}
+                onClick={() => {
+                  setActiveTab('matieres');
+                  setSelectedCategory('');
+                  setCurrentPage(1);
+                }}
                 className={`px-6 py-4 font-medium text-sm transition-colors ${
                   activeTab === 'matieres'
                     ? 'text-military-700 border-b-2 border-military-700'
@@ -197,7 +235,11 @@ export const Stocks = () => {
                 Matières Premières
               </button>
               <button
-                onClick={() => setActiveTab('uniformes')}
+                onClick={() => {
+                  setActiveTab('uniformes');
+                  setSelectedCategory('');
+                  setCurrentPage(1);
+                }}
                 className={`px-6 py-4 font-medium text-sm transition-colors ${
                   activeTab === 'uniformes'
                     ? 'text-military-700 border-b-2 border-military-700'
@@ -227,10 +269,7 @@ export const Stocks = () => {
                 </div>
                 <select
                   value={selectedCategory}
-                  onChange={(e) => {
-                    setSelectedCategory(e.target.value);
-                    setCurrentPage(1);
-                  }}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
                 >
                   <option value="">Toutes les catégories</option>
@@ -281,11 +320,9 @@ export const Stocks = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Institution</th>
+                      {activeTab === 'uniformes' && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Institution</th>}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Emplacement</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Étagère</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantification</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -295,11 +332,9 @@ export const Stocks = () => {
                       <tr key={article.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{article.nom}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.categorie}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.institution}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{article.quantite}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.unite_mesure}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.emplacement}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.etagere}</td>
+                        {activeTab === 'uniformes' && <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.institution}</td>}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{Math.floor(article.quantite)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{article.quantification}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge
                             currentStatus={article.statut}
@@ -312,9 +347,6 @@ export const Stocks = () => {
                           <div className="flex items-center gap-2">
                             <button onClick={() => handleView(article)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Consulter">
                               <Eye className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => handleEdit(article)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Modifier">
-                              <Edit className="w-4 h-4" />
                             </button>
                             <button onClick={() => handleDelete(article.id)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Supprimer">
                               <Trash2 className="w-4 h-4" />
@@ -368,10 +400,12 @@ export const Stocks = () => {
                 <label className="text-sm font-medium text-gray-500">Catégorie</label>
                 <p className="text-base text-gray-900">{viewingArticle.categorie}</p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Institution</label>
-                <p className="text-base text-gray-900">{viewingArticle.institution}</p>
-              </div>
+              {viewingArticle.type === 'uniforme_fini' && (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Institution</label>
+                  <p className="text-base text-gray-900">{viewingArticle.institution}</p>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-medium text-gray-500">Type</label>
                 <p className="text-base text-gray-900">
@@ -380,7 +414,7 @@ export const Stocks = () => {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Quantité</label>
-                <p className="text-base font-semibold text-gray-900">{viewingArticle.quantite} {viewingArticle.unite_mesure}</p>
+                <p className="text-base font-semibold text-gray-900">{Math.floor(viewingArticle.quantite)} {viewingArticle.quantification}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Statut</label>
@@ -389,14 +423,6 @@ export const Stocks = () => {
                     {viewingArticle.statut}
                   </span>
                 </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Emplacement</label>
-                <p className="text-base text-gray-900">{viewingArticle.emplacement}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Étagère</label>
-                <p className="text-base text-gray-900">{viewingArticle.etagere}</p>
               </div>
             </div>
             <div className="flex justify-end pt-4 border-t border-gray-200">

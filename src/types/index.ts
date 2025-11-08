@@ -9,27 +9,13 @@ export interface User {
   date_creation: string;
 }
 
-export interface RapportSummary {
-  total_transactions: number;
-  total_montant: number;
-  total_montant_commandes_livrees: number;
-  nombre_commandes_livrees: number;
-  commandes: number;
-  mouvements: number;
-  par_categorie: Array<{
-    type_activite: string;
-    count: number;
-  }>;
-}
 export interface Article {
   id: string;
   nom: string;
   categorie: string;
   institution: string;
   quantite: number;
-  unite_mesure: string;
-  emplacement: string;
-  etagere: string;
+  quantification: string; // Changé de unite_mesure à quantification
   statut: 'Normal' | 'Faible';
   type: 'matiere_premiere' | 'uniforme_fini';
   seuil_alerte?: number;
@@ -42,7 +28,7 @@ export interface Stock {
   nom_produit: string;
   categorie: string;
   quantite_disponible: number;
-  unite_mesure: string;
+  quantification: string; // Changé de unite_mesure à quantification
   seuil_alerte: number;
   date_creation?: string;
   date_modification?: string;
@@ -52,18 +38,20 @@ export interface Categorie {
   id: string;
   nom: string;
   description?: string;
-  unite_mesure: string;
+  quantification: string; // Changé de unite_mesure à quantification
 }
 
 export interface Mouvement {
   id: string;
   type: 'Entrée Externe' | 'Entrée Interne' | 'Sortie Externe' | 'Sortie Interne';
-  article_id: string;
+  article_id?: string;
   article_nom?: string;
   quantite: number;
+  quantification?: string; // Ajouté pour les mouvements
   date: string;
   source_destination: string;
   reference?: string;
+  notes?: string;
   utilisateur_id: string;
   utilisateur_nom?: string;
 }
@@ -74,19 +62,20 @@ export interface Commande {
   institution: string;
   article: string;
   quantite: number;
-  unite_mesure?: string;
-  montant: number;
-  statut: 'En attente' | 'En production' | 'Livrée' | 'Annulée';
+  quantification?: string; // Changé de unite_mesure à quantification (pièces pour uniformes)
+  statut: 'En attente' | 'En production' | 'Livrée' | 'Terminée' | 'Annulée';
   priorite: 'Basse' | 'Normale' | 'Haute' | 'Urgente';
   date_commande: string;
   date_livraison_prevue?: string;
-  fournisseur_id?: string;
-  fournisseur_nom?: string;
+  client_id?: string;
+  client_nom?: string;
+  client_telephone?: string;
   produit_id?: string;
+  tirer_du_stock?: boolean; // Indique si la commande tire du stock existant
+  uniforme_id?: string; // ID de l'uniforme sélectionné (si tirer_du_stock = true)
   created_at?: string;
   updated_at?: string;
 }
-
 export interface DashboardStats {
   total_articles?: number;
   entrees_ce_mois?: number;
@@ -99,6 +88,8 @@ export interface DashboardStats {
   commandes_en_attente?: number;
   commandes_en_production?: number;
   commandes_livrees?: number;
+  commandes_terminees?: number;
+  commandes_annulees?: number;
 }
 
 export interface ChartData {
@@ -123,9 +114,10 @@ export interface Historique {
 export interface RapportSummary {
   total_transactions: number;
   total_montant: number;
+  total_montant_commandes_livrees: number;
+  nombre_commandes_livrees: number;
   commandes: number;
   mouvements: number;
-  utilisateurs: number;
   par_categorie: Array<{
     type_activite: string;
     count: number;
@@ -153,5 +145,12 @@ export interface Fournisseur {
   email: string;
   telephone?: string;
   adresse?: string;
+  date_creation: string;
+}
+
+export interface Client {
+  id: string;
+  nom: string;
+  telephone: string;
   date_creation: string;
 }

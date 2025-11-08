@@ -1,33 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
-import { Fournisseur } from '../types';
+import { Client } from '../types';
 
-interface FournisseurFormProps {
-  fournisseur?: Fournisseur;
-  onSubmit: (data: Partial<Fournisseur>) => void;
+interface ClientFormProps {
+  client?: Client;
+  onSubmit: (data: Partial<Client>) => void;
   onClose: () => void;
 }
 
-export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurFormProps) => {
+export const ClientForm = ({ client, onSubmit, onClose }: ClientFormProps) => {
   const [formData, setFormData] = useState({
-    nom: '',
-    email: '',
-    telephone: '',
-    adresse: '',
+    nom: client?.nom || '',
+    telephone: client?.telephone || '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (fournisseur) {
-      setFormData({
-        nom: fournisseur.nom || '',
-        email: fournisseur.email || '',
-        telephone: fournisseur.telephone || '',
-        adresse: fournisseur.adresse || '',
-      });
-    }
-  }, [fournisseur]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -42,10 +29,6 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
       newErrors.telephone = 'Numéro de téléphone invalide';
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Email invalide';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -57,7 +40,7 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) {
@@ -70,7 +53,7 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">
-            {fournisseur ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}
+            {client ? 'Modifier le client' : 'Nouveau client'}
           </h2>
           <button
             onClick={onClose}
@@ -83,7 +66,7 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nom du fournisseur <span className="text-red-500">*</span>
+              Nom du client <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -93,26 +76,9 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none ${
                 errors.nom ? 'border-red-500' : 'border-gray-300'
               }`}
-              placeholder="Ex: Entreprise ABC"
+              placeholder="Ex: Jean Dupont"
             />
             {errors.nom && <p className="mt-1 text-sm text-red-500">{errors.nom}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none ${
-                errors.email ? 'border-red-500' : 'border-gray-300'
-              }`}
-              placeholder="contact@entreprise.com"
-            />
-            {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
           </div>
 
           <div>
@@ -132,20 +98,6 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
             {errors.telephone && <p className="mt-1 text-sm text-red-500">{errors.telephone}</p>}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Adresse
-            </label>
-            <textarea
-              name="adresse"
-              value={formData.adresse}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none resize-none"
-              placeholder="Ex: 123 Rue de la Paix, Douala"
-            />
-          </div>
-
           <div className="flex gap-3 pt-4">
             <button
               type="button"
@@ -158,7 +110,7 @@ export const FournisseurForm = ({ fournisseur, onSubmit, onClose }: FournisseurF
               type="submit"
               className="flex-1 px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-800 transition-colors"
             >
-              {fournisseur ? 'Mettre à jour' : 'Créer'}
+              {client ? 'Mettre à jour' : 'Créer'}
             </button>
           </div>
         </form>

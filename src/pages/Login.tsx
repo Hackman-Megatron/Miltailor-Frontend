@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
@@ -7,10 +7,17 @@ import { Toast } from '../components/Toast';
 
 export const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, isAuthenticated } = useAuthStore();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  // Rediriger automatiquement si l'utilisateur est déjà authentifié
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,11 +31,7 @@ export const Login = () => {
       setToast({ message: 'Connexion réussie', type: 'success' });
 
       setTimeout(() => {
-        if (user.role === 'Super Administrateur') {
-          navigate('/dashboard');
-        } else {
-          navigate('/dashboard');
-        }
+        navigate('/dashboard');
       }, 1000);
     } catch (error: any) {
       setToast({
@@ -103,7 +106,7 @@ export const Login = () => {
               onClick={() => navigate('/')}
               className="text-sm text-military-700 hover:text-military-600 font-medium"
             >
-              Retour à l'accueil
+              ← Retour à l'accueil
             </button>
           </div>
         </div>

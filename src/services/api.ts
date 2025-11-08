@@ -174,11 +174,36 @@ export const usersService = {
 };
 
 export const pdfService = {
-  generateReport: (type: string, data: any, filters?: any) =>
-    api.post('/pdf/generate-rapport', { type, data, filters }),
-  downloadReport: (filename: string) =>
-    api.get(`/pdf/download/${filename}`, { responseType: 'blob' }),
-  listReports: () => api.get('/pdf/list'),
+  generateReport: (type: string, data: any[], filters?: any) => {
+    return api.post('/pdf/generate-rapport', {
+      type,
+      data,
+      filters
+    });
+  },
+  
+  downloadReport: (filename: string) => {
+    return api.get(`/pdf/download/${filename}`, {
+      responseType: 'blob'
+    });
+  },
+  
+  listReports: () => {
+    return api.get('/pdf/list');
+  },
+  
+  // Nouveaux services pour exports spécifiques
+  generateStocksReport: (filters?: any) => {
+    return api.post('/pdf/stocks', { filters }, { responseType: 'blob' });
+  },
+  
+  generateMouvementsReport: (filters?: any) => {
+    return api.post('/pdf/mouvements', { filters }, { responseType: 'blob' });
+  },
+  
+  generateCommandesReport: (filters?: any) => {
+    return api.post('/pdf/commandes', { filters }, { responseType: 'blob' });
+  }
 };
 
 export const historiqueService = {
@@ -189,11 +214,19 @@ export const historiqueService = {
 };
 
 export const fournisseursService = {
-  getAll: () => api.get('/fournisseurs'),
-  getOne: (id: string) => api.get(`/fournisseurs/${id}`),
-  create: (data: any) => api.post('/fournisseurs', data),
-  update: (id: string, data: any) => api.put(`/fournisseurs/${id}`, data),
-  delete: (id: string) => api.delete(`/fournisseurs/${id}`),
-};
+   getAll: () => api.get('/fournisseurs'),
+   getOne: (id: string) => api.get(`/fournisseurs/${id}`),
+   create: (data: any) => api.post('/fournisseurs', data),
+   update: (id: string, data: any) => api.put(`/fournisseurs/${id}`, data),
+   delete: (id: string) => api.delete(`/fournisseurs/${id}`),
+ };
+
+export const clientsService = {
+   getAll: () => api.get('/clients'),
+   getOne: (id: string) => api.get(`/clients/${id}`),
+   create: (data: any) => api.post('/clients', data),
+   update: (id: string, data: any) => api.put(`/clients/${id}`, data),
+   delete: (id: string) => api.delete(`/clients/${id}`),
+ };
 
 export default api;

@@ -159,26 +159,6 @@ export const Historique = () => {
           </div>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {categories.map((cat) => {
-            const Icon = cat.icon;
-            return (
-              <button
-                key={cat.value}
-                onClick={() => handleCategoryFilter(cat.value)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  activeCategory === cat.value
-                    ? 'bg-military-700 text-white shadow-lg'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
-
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-4">

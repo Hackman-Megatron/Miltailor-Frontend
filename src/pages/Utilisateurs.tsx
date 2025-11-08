@@ -7,13 +7,18 @@ import { getStatusColor, formatDate } from '../utils/formatters';
 import { Toast } from '../components/Toast';
 import { Modal } from '../components/Modal';
 import UserForm from '../components/UserForm';
+import { UserView } from '../components/UserView';
+import { UserEditForm } from '../components/UserEditForm';
 import { StatusBadge } from '../components/StatusBadge';
+
+type ModalType = 'create' | 'view' | 'edit' | null;
 
 export const Utilisateurs = () => {
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<ModalType>(null);
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -31,7 +36,6 @@ export const Utilisateurs = () => {
     }
   };
 
-
   const handleDelete = async (id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
 
@@ -44,14 +48,30 @@ export const Utilisateurs = () => {
     }
   };
 
-  const handleSubmit = async (data: Partial<UserType>) => {
+  const handleCreateSubmit = async (data: Partial<UserType>) => {
     try {
       await usersService.create(data);
       setToast({ message: 'Utilisateur créé avec succès', type: 'success' });
-      setShowModal(false);
+      setModalType(null);
+      setSelectedUser(null);
       loadUsers();
     } catch (error) {
       setToast({ message: 'Erreur lors de la création de l\'utilisateur', type: 'error' });
+      throw error;
+    }
+  };
+
+  const handleEditSubmit = async (data: Partial<UserType>) => {
+    if (!selectedUser) return;
+    
+    try {
+      await usersService.update(selectedUser.id, data);
+      setToast({ message: 'Utilisateur modifié avec succès', type: 'success' });
+      setModalType(null);
+      setSelectedUser(null);
+      loadUsers();
+    } catch (error) {
+      setToast({ message: 'Erreur lors de la modification de l\'utilisateur', type: 'error' });
       throw error;
     }
   };
@@ -67,13 +87,41 @@ export const Utilisateurs = () => {
     }
   };
 
+  const handleView = (user: UserType) => {
+    setSelectedUser(user);
+    setModalType('view');
+  };
+
+  const handleEdit = (user: UserType) => {
+    setSelectedUser(user);
+    setModalType('edit');
+  };
+
+  const handleViewToEdit = () => {
+    setModalType('edit');
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setSelectedUser(null);
+  };
+
+  const getModalTitle = () => {
+    switch (modalType) {
+      case 'create': return 'Nouvel utilisateur';
+      case 'view': return 'Détails de l\'utilisateur';
+      case 'edit': return 'Modifier l\'utilisateur';
+      default: return '';
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Utilisateurs</h1>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => setModalType('create')}
             className="flex items-center gap-2 px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -120,8 +168,8 @@ export const Utilisateurs = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.telephone}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.institution}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.telephone || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.institution || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <StatusBadge
                           currentStatus={user.statut}
@@ -133,13 +181,25 @@ export const Utilisateurs = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(user.date_creation)}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-2">
-                          <button className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                          <button 
+                            onClick={() => handleView(user)}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Voir les détails"
+                          >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button className="p-1 text-green-600 hover:bg-green-50 rounded">
+                          <button 
+                            onClick={() => handleEdit(user)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            title="Modifier"
+                          >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDelete(user.id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                          <button 
+                            onClick={() => handleDelete(user.id)} 
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            title="Supprimer"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -161,15 +221,33 @@ export const Utilisateurs = () => {
       </div>
 
       <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Nouvel utilisateur"
+        isOpen={modalType !== null}
+        onClose={closeModal}
+        title={getModalTitle()}
         size="lg"
       >
-        <UserForm
-          onSubmit={handleSubmit}
-          onCancel={() => setShowModal(false)}
-        />
+        {modalType === 'create' && (
+          <UserForm
+            onSubmit={handleCreateSubmit}
+            onCancel={closeModal}
+          />
+        )}
+        
+        {modalType === 'view' && selectedUser && (
+          <UserView
+            user={selectedUser}
+            onEdit={handleViewToEdit}
+            onClose={closeModal}
+          />
+        )}
+        
+        {modalType === 'edit' && selectedUser && (
+          <UserEditForm
+            user={selectedUser}
+            onSubmit={handleEditSubmit}
+            onCancel={closeModal}
+          />
+        )}
       </Modal>
 
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}

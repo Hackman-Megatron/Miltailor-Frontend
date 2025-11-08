@@ -3,10 +3,12 @@ import { LogIn, Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { articlesService } from '../services/api';
 import { uniformImages } from '../utils/images-catalogue';
+import { useAuthStore } from '../store/authStore';
 
 export const Home = () => {
   const navigate = useNavigate();
   const [uniformes, setUniformes] = useState<any[]>([]);
+  const { isAuthenticated, user } = useAuthStore();
 
   useEffect(() => {
     loadUniformes();
@@ -28,6 +30,16 @@ export const Home = () => {
     }
   };
 
+  const handleLoginClick = () => {
+    if (isAuthenticated && user) {
+      // Si l'utilisateur est déjà authentifié, rediriger vers le dashboard
+      navigate('/dashboard');
+    } else {
+      // Sinon, rediriger vers la page de connexion
+      navigate('/connexion');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -35,10 +47,11 @@ export const Home = () => {
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold text-gray-900">Atelier Militaire CEFTA</h1>
           <button
-            onClick={() => navigate('/connexion')}
+            onClick={handleLoginClick}
             className="flex items-center gap-2 px-6 py-2.5 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors font-medium"
           >
-            <LogIn className="w-4 h-4" /> Se connecter
+            <LogIn className="w-4 h-4" />
+            {isAuthenticated ? 'Accéder au Dashboard' : 'Se connecter'}
           </button>
         </div>
       </header>
@@ -69,7 +82,7 @@ export const Home = () => {
             </div>
           </div>
         </div>
-        {/* Grids d’images normalisées */}
+        {/* Grids d'images normalisées */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {uniformes.map((uniforme) => (
             <div key={uniforme.id} className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow">

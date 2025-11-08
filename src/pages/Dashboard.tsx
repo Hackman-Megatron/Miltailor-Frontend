@@ -3,7 +3,7 @@ import { Package, TrendingUp, TrendingDown, AlertTriangle, Download, Upload } fr
 import { DashboardLayout } from '../layouts/DashboardLayout';
 import { StatCard } from '../components/StatCard';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { dashboardService } from '../services/api';
+import { dashboardService, commandesService } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { DashboardStats, ChartData } from '../types';
 
@@ -23,54 +23,71 @@ export const Dashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadDashboardData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  
+const loadDashboardData = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      const [statsRes, mouvRes, catRes, rawRes, mouvStatsRes] = await Promise.all([
-        dashboardService.getStats(),
-        dashboardService.getChartData('mouvements'),
-        dashboardService.getChartData('categories'),
-        dashboardService.getChartData('raw-materials'),
-        fetch(`${API_BASE_URL}/mouvements/stats`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }).then(r => r.json()),
-      ]);
+    const [statsRes, mouvRes, catRes, rawRes, mouvStatsRes, commandesStatsRes] = await Promise.all([
+      dashboardService.getStats(),
+      dashboardService.getChartData('mouvements'),
+      dashboardService.getChartData('categories'),
+      dashboardService.getChartData('raw-materials'),
+      fetch(`${API_BASE_URL}/mouvements/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }).then(r => r.json()),
+      commandesService.getStats(),
+    ]);
 
-      setStats(statsRes.data || {});
-      setMouvementsData(mouvRes.data || []);
-      setCategoriesData(catRes.data || []);
-      setRawMaterialsData(rawRes.data || []);
+    setMouvementsData(mouvRes.data || []);
+    setCategoriesData(catRes.data || []);
+    setRawMaterialsData(rawRes.data || []);
 
-      const statsData = mouvStatsRes || [];
-      const statsMap: any = {
-        entrees_externes: 0,
-        entrees_internes: 0,
-        sorties_externes: 0,
-        sorties_internes: 0
-      };
-      statsData.forEach((stat: any) => {
-        if (stat.type === 'Entrée Externe') statsMap.entrees_externes = stat.count;
-        if (stat.type === 'Entrée Interne') statsMap.entrees_internes = stat.count;
-        if (stat.type === 'Sortie Externe') statsMap.sorties_externes = stat.count;
-        if (stat.type === 'Sortie Interne') statsMap.sorties_internes = stat.count;
-      });
-      setMouvementsStats(statsMap);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      setStats({});
-      setMouvementsData([]);
-      setCategoriesData([]);
-      setRawMaterialsData([]);
-      setMouvementsStats({ entrees_externes: 0, entrees_internes: 0, sorties_externes: 0, sorties_internes: 0 });
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Calculer les statistiques de mouvements du mois en cours
+    const statsData = mouvStatsRes || [];
+    const statsMap: any = {
+      entrees_externes: 0,
+      entrees_internes: 0,
+      sorties_externes: 0,
+      sorties_internes: 0
+    };
+    
+    statsData.forEach((stat: any) => {
+      if (stat.type === 'Entrée Externe') statsMap.entrees_externes = stat.count;
+      if (stat.type === 'Entrée Interne') statsMap.entrees_internes = stat.count;
+      if (stat.type === 'Sortie Externe') statsMap.sorties_externes = stat.count;
+      if (stat.type === 'Sortie Interne') statsMap.sorties_internes = stat.count;
+    });
+    
+    setMouvementsStats(statsMap);
+
+    // Mettre à jour les stats avec les calculs corrects
+    const updatedStats = statsRes.data || {};
+    
+    // Calculer entrees_ce_mois et sorties_ce_mois à partir des mouvements
+    updatedStats.entrees_ce_mois = statsMap.entrees_externes + statsMap.entrees_internes;
+    updatedStats.sorties_ce_mois = statsMap.sorties_externes + statsMap.sorties_internes;
+    
+    // Les uniformes terminés = nombre d'articles de type "uniforme_fini"
+    updatedStats.uniformes_termines = updatedStats.uniformes_termines || 0;
+    
+    setStats(updatedStats);
+
+  } catch (error) {
+    console.error('Error loading dashboard data:', error);
+    setStats({});
+    setMouvementsData([]);
+    setCategoriesData([]);
+    setRawMaterialsData([]);
+    setMouvementsStats({ entrees_externes: 0, entrees_internes: 0, sorties_externes: 0, sorties_internes: 0 });
+  } finally {
+    setLoading(false);
+  }
+};
 
 
   if (loading) {

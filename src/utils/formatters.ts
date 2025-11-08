@@ -22,11 +22,13 @@ export const formatDateTime = (date: string | Date): string => {
 
 export const getStatusColor = (statut: string): string => {
   const colors: Record<string, string> = {
-    'Normal': 'bg-green-100 text-green-800',
-    'Faible': 'bg-red-100 text-red-800',
     'En attente': 'bg-yellow-100 text-yellow-800',
     'En production': 'bg-blue-100 text-blue-800',
     'Livrée': 'bg-green-100 text-green-800',
+    'Terminée': 'bg-purple-100 text-purple-800', // NOUVEAU
+    'Annulée': 'bg-red-100 text-red-800',
+    'Normal': 'bg-green-100 text-green-800',
+    'Faible': 'bg-red-100 text-red-800',
     'Actif': 'bg-green-100 text-green-800',
     'Désactivé': 'bg-gray-100 text-gray-800',
   };
