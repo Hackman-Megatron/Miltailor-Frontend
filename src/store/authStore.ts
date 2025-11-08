@@ -14,11 +14,18 @@ interface AuthState {
   restoreSession: () => Promise<boolean>;
 }
 
+const getInitialAuthState = () => {
+  const token = localStorage.getItem('token');
+  const refreshToken = localStorage.getItem('refreshToken');
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const isAuthenticated = !!(token && refreshToken && user);
+
+  return { user, token, refreshToken, isAuthenticated };
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  refreshToken: null,
-  isAuthenticated: false,
+  ...getInitialAuthState(),
   login: (user, token, refreshToken) => {
     localStorage.setItem('token', token);
     localStorage.setItem('refreshToken', refreshToken);

@@ -12,7 +12,14 @@ export const Home = () => {
 
   useEffect(() => {
     loadUniformes();
-  }, []);
+    // Rediriger automatiquement vers le dashboard si l'utilisateur est authentifié
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  // NOTE: Cette page ne s'affiche que si l'utilisateur n'est pas authentifié
+  // Les utilisateurs authentifiés sont automatiquement redirigés vers le dashboard
 
   const loadUniformes = async () => {
     try {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Home } from './pages/Home';
@@ -14,7 +14,9 @@ import { FournisseursClients } from './pages/FournisseursClients';
 import { Historique } from './pages/Historique';
 import { Sessions } from './pages/Sessions';
 
-function App() {
+// Composant pour gérer le loader uniquement sur les routes protégées
+function InitializationLoader({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
   const { checkAuth, restoreSession } = useAuthStore();
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -39,114 +41,115 @@ function App() {
     initializeAuth();
   }, [checkAuth, restoreSession]);
 
+  // Les routes publiques (/ et /connexion) ne nécessitent pas d'attendre l'initialisation
+  const isPublicRoute = location.pathname === '/' || location.pathname === '/connexion';
+
+  if (!isInitialized && !isPublicRoute) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-military-700"></div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* ✅ La page Home reste toujours accessible */}
-        <Route path="/" element={<Home />} />
+      <InitializationLoader>
+        <Routes>
+          {/* ✅ Route principale - redirige vers dashboard si authentifié, sinon home */}
+          <Route path="/" element={<Home />} />
+          <Route path="/connexion" element={<Login />} />
 
-        {/* ✅ On laisse la page de connexion publique aussi */}
-        <Route path="/connexion" element={<Login />} />
-
-        {/* ✅ Les routes protégées sont conditionnées */}
-        {!isInitialized ? (
-          // Pendant l'initialisation, on affiche un petit loader uniquement si on essaye d’aller sur une page protégée
+          {/* ✅ Routes protégées */}
           <Route
-            path="*"
+            path="/dashboard"
             element={
-              <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-military-700"></div>
-              </div>
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
             }
           />
-        ) : (
-          <>
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
 
-            <Route
-              path="/stocks"
-              element={
-                <ProtectedRoute>
-                  <Stocks />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/stocks"
+            element={
+              <ProtectedRoute>
+                <Stocks />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/mouvements"
-              element={
-                <ProtectedRoute>
-                  <Mouvements />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/mouvements"
+            element={
+              <ProtectedRoute>
+                <Mouvements />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/commandes"
-              element={
-                <ProtectedRoute allowedRoles={['Administrateur', 'Super Administrateur']}>
-                  <Commandes />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/commandes"
+            element={
+              <ProtectedRoute allowedRoles={['Administrateur', 'Super Administrateur']}>
+                <Commandes />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/rapports"
-              element={
-                <ProtectedRoute allowedRoles={['Super Administrateur']}>
-                  <Rapports />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/rapports"
+            element={
+              <ProtectedRoute allowedRoles={['Super Administrateur']}>
+                <Rapports />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/utilisateurs"
-              element={
-                <ProtectedRoute allowedRoles={['Super Administrateur']}>
-                  <Utilisateurs />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/utilisateurs"
+            element={
+              <ProtectedRoute allowedRoles={['Super Administrateur']}>
+                <Utilisateurs />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/fournisseurs-clients"
-              element={
-                <ProtectedRoute>
-                  <FournisseursClients />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/fournisseurs-clients"
+            element={
+              <ProtectedRoute>
+                <FournisseursClients />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/historique"
-              element={
-                <ProtectedRoute allowedRoles={['Super Administrateur']}>
-                  <Historique />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/historique"
+            element={
+              <ProtectedRoute allowedRoles={['Super Administrateur']}>
+                <Historique />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-              path="/sessions"
-              element={
-                <ProtectedRoute allowedRoles={['Super Administrateur']}>
-                  <Sessions />
-                </ProtectedRoute>
-              }
-            />
+          <Route
+            path="/sessions"
+            element={
+              <ProtectedRoute allowedRoles={['Super Administrateur']}>
+                <Sessions />
+              </ProtectedRoute>
+            }
+          />
 
-            {/* Redirection par défaut */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
-        )}
-      </Routes>
+          {/* Redirection par défaut */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </InitializationLoader>
     </BrowserRouter>
   );
 }

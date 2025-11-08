@@ -12,7 +12,8 @@ export const Login = () => {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
-  // Rediriger automatiquement si l'utilisateur est déjà authentifié
+  // Rediriger automatiquement vers le dashboard si déjà authentifié
+  // UNIQUEMENT sur la page /connexion
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/dashboard', { replace: true });
