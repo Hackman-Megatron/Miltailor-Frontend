@@ -2,19 +2,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   LogIn, Shield, ChevronDown, Package, Users, BarChart3, Lock,
   CheckCircle, AlertCircle, ArrowRight, Layers, Award, Settings,
-  ChevronLeft, ChevronRight, Tag, Building2, Layers2,
+  ChevronLeft, ChevronRight, Tag, Layers2, RefreshCw,
 } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { articlesService } from '../services/api';
 import { uniformImages } from '../utils/images-catalogue';
 import { useAuthStore } from '../store/authStore';
 
-/* ─────────────────────────────────────────────────────────────
-   5 tenues fixes — exactement ARTICLES_COMMANDES de MouvementForm
-   Le matching avec la BD se fait UNIQUEMENT sur le champ `nom`.
-   Si au moins un enregistrement BD porte ce nom avec quantite > 0
-   → "En stock". Sinon → "Disponible sous commande".
-───────────────────────────────────────────────────────────── */
+/* ─── Types ─── */
 interface TenueMaitre {
   nom: string;
   type: string;
@@ -22,40 +17,6 @@ interface TenueMaitre {
   description: string;
 }
 
-const TENUES_MAITRE: TenueMaitre[] = [
-  {
-    nom: 'Camouflés',
-    type: 'Opérationnel',
-    categorie: 'Armée de Terre',
-    description: 'Tenue camouflée réglementaire pour les opérations de terrain. Tissu résistant aux intempéries, mobilité optimale en milieu hostile.',
-  },
-  {
-    nom: 'Tenues claires',
-    type: 'Cérémonie',
-    categorie: 'Cérémonie',
-    description: 'Tenue de sortie et de représentation officielle, portée lors des cérémonies militaires, remises de médailles et parades nationales.',
-  },
-  {
-    nom: 'Trei gendarmerie',
-    type: 'Service',
-    categorie: 'Gendarmerie',
-    description: 'Tenue de service quotidien de la Gendarmerie Nationale. Identification visuelle immédiate pour les missions de maintien de l\'ordre.',
-  },
-  {
-    nom: 'Vareuse',
-    type: 'Cérémonie',
-    categorie: 'Marine / Armée',
-    description: 'Veste de grande tenue militaire réglementaire. Portée lors des événements protocolaires officiels avec insignes et galons cousus selon le grade.',
-  },
-  {
-    nom: 'Tenue cafard',
-    type: 'Combat',
-    categorie: 'Combat',
-    description: 'Tenue de combat légère haute résistance, conçue pour une mobilité maximale lors des opérations spéciales et des interventions rapides.',
-  },
-];
-
-/* ─── Type retourné par l'API ─── */
 interface UniformeDB {
   id: string;
   nom: string;
@@ -67,81 +28,140 @@ interface UniformeDB {
   statut: string;
 }
 
-/* ─── Carte fusionnée ─── */
 interface CarouselCard extends TenueMaitre {
-  /* Le premier enregistrement BD avec quantite > 0 pour ce nom,
-     ou le premier enregistrement tout court, ou null */
   dbRecord: UniformeDB | null;
-  totalQty: number;   // somme de toutes les quantites pour ce nom
+  totalQty: number;
 }
+
+/* ─── Liste maître — exactement ARTICLES_COMMANDES de MouvementForm ─── */
+const TENUES_MAITRE: TenueMaitre[] = [
+  {
+    nom: 'Camouflés',
+    type: 'Opérationnel',
+    categorie: 'Armée de Terre',
+    description: 'Tenue camouflée réglementaire pour les opérations de terrain. Tissu résistant aux intempéries, mobilité optimale en milieu hostile.',
+  },
+  {
+    nom: 'Tenues claires',
+    type: 'Cérémonie',
+    categorie: 'Cérémonie',
+    description: "Tenue de sortie et de représentation officielle, portée lors des cérémonies militaires, remises de médailles et parades nationales.",
+  },
+  {
+    nom: 'Trei gendarmerie',
+    type: 'Service',
+    categorie: 'Gendarmerie',
+    description: "Tenue de service quotidien de la Gendarmerie Nationale. Identification visuelle immédiate pour les missions de maintien de l'ordre.",
+  },
+  {
+    nom: 'Vareuse',
+    type: 'Cérémonie',
+    categorie: 'Marine / Armée',
+    description: 'Veste de grande tenue militaire réglementaire. Portée lors des événements protocolaires avec insignes et galons cousus selon le grade.',
+  },
+  {
+    nom: 'Tenue cafard',
+    type: 'Combat',
+    categorie: 'Combat',
+    description: 'Tenue de combat légère haute résistance, conçue pour une mobilité maximale lors des opérations spéciales et interventions rapides.',
+  },
+];
+
+const POLL_MS = 30_000;
 
 export const Home = () => {
   const navigate = useNavigate();
   const [dbUniformes, setDbUniformes] = useState<UniformeDB[]>([]);
   const [loading, setLoading]         = useState(true);
+  const [syncing, setSyncing]         = useState(false);
+  const [lastSync, setLastSync]       = useState<Date | null>(null);
   const [centerIndex, setCenterIndex] = useState(0);
   const { isAuthenticated } = useAuthStore();
   const catalogueRef = useRef<HTMLDivElement>(null);
   const carouselRef  = useRef<HTMLDivElement>(null);
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) navigate('/dashboard', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
-    setLoading(true);
+  /* ── Fetch — SANS quantite_min pour avoir TOUS les uniformes,
+     y compris ceux à 0 (ils seront marqués "sous commande") ── */
+  const fetchUniformes = useCallback(async (silent = false) => {
+    silent ? setSyncing(true) : setLoading(true);
     try {
-      // Récupère TOUS les uniformes finis sans filtre quantite
       const res = await articlesService.getAll({ type: 'uniforme_fini', limit: 200 });
+      /* Gère les deux formats de réponse (paginé ou flat) */
       const raw: UniformeDB[] = res.data?.data ?? res.data ?? [];
-      console.log('[CEFTA] uniformes BD reçus:', raw.map(u => `${u.nom} (qty=${u.quantite})`));
       setDbUniformes(raw);
-    } catch (err) {
-      console.error('[CEFTA] Erreur chargement uniformes:', err);
-      // Fallback démo
-      setDbUniformes([
-        { id: '1', nom: 'Camouflés',      type: 'Opérationnel', categorie: 'Armée',      institution: 'Armée de Terre',   quantite: 12, quantification: 'pièces', statut: 'Normal' },
-        { id: '2', nom: 'Tenues claires', type: 'Cérémonie',    categorie: 'Cérémonie',  institution: 'Armée de Terre',   quantite: 5,  quantification: 'pièces', statut: 'Faible' },
-        { id: '3', nom: 'Trei gendarmerie',type:'Service',      categorie: 'Gendarmerie',institution: 'Gendarmerie',      quantite: 0,  quantification: 'pièces', statut: 'Faible' },
-      ]);
+      setLastSync(new Date());
+    } catch {
+      /* En cas d'erreur silencieuse, conserve les données actuelles.
+         Au premier chargement on laisse le tableau vide — toutes les
+         cartes s'afficheront "sous commande", ce qui est exact. */
     } finally {
-      setLoading(false);
+      silent ? setSyncing(false) : setLoading(false);
     }
-  };
+  }, []);
 
-  /* ── Matching : nom uniquement, insensible casse/espaces ── */
+  /* ── 1. Chargement initial ── */
+  useEffect(() => { fetchUniformes(false); }, [fetchUniformes]);
+
+  /* ── 2. Polling 30 s ── */
+  const startPolling = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => fetchUniformes(true), POLL_MS);
+  }, [fetchUniformes]);
+
+  useEffect(() => {
+    startPolling();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [startPolling]);
+
+  /* ── 3. Retour sur l'onglet ── */
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') { fetchUniformes(true); startPolling(); }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchUniformes, startPolling]);
+
+  /* ── 4. Reprise du focus ── */
+  useEffect(() => {
+    const onFocus = () => { fetchUniformes(true); startPolling(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchUniformes, startPolling]);
+
+  /* ── Matching nom → BD (insensible casse/espaces) ── */
   const normalize = (s: string) => s?.trim().toLowerCase() ?? '';
 
-  const buildCards = (): CarouselCard[] =>
+  const buildCards = useCallback((): CarouselCard[] =>
     TENUES_MAITRE.map(tenue => {
-      const nomN = normalize(tenue.nom);
-      // Tous les enregistrements BD portant ce nom
+      const nomN    = normalize(tenue.nom);
       const matches = dbUniformes.filter(db => normalize(db.nom) === nomN);
-      // Quantité totale cumulée (plusieurs institutions possibles)
+      /* Somme de toutes les quantités pour ce nom (multi-institutions) */
       const totalQty = matches.reduce((sum, db) => sum + (db.quantite ?? 0), 0);
-      // On prend le premier enregistrement en stock, ou le premier tout court
-      const dbRecord =
-        matches.find(db => db.quantite > 0) ??
-        matches[0] ??
-        null;
+      /* On garde le premier enregistrement comme référence d'affichage */
+      const dbRecord = matches.find(db => db.quantite > 0) ?? matches[0] ?? null;
       return { ...tenue, dbRecord, totalQty };
-    });
+    }),
+  [dbUniformes]);
 
   const cards = buildCards();
 
-  /* ── Statut d'une carte ── */
+  /* ── Statut : EN STOCK si totalQty > 0, SOUS COMMANDE sinon ──
+     On n'affiche jamais les quantités côté public. ── */
   const getStatus = (card: CarouselCard) =>
     card.totalQty > 0
-      ? { inStock: true,  label: 'En stock',                 qty: card.totalQty, unit: card.dbRecord?.quantification ?? 'pièces', statut: card.dbRecord?.statut ?? 'Normal' }
-      : { inStock: false, label: 'Disponible sous commande', qty: null,           unit: null,                                       statut: null };
+      ? { inStock: true,  label: 'En stock' }
+      : { inStock: false, label: 'Disponible sous commande' };
 
   const handleLoginClick  = () => navigate(isAuthenticated ? '/dashboard' : '/connexion');
   const scrollToCatalogue = () => catalogueRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   const activeCat = cards[centerIndex]?.categorie ?? null;
-
   const prev = () => setCenterIndex(i => Math.max(0, i - 1));
   const next = () => setCenterIndex(i => Math.min(cards.length - 1, i + 1));
 
@@ -153,19 +173,16 @@ export const Home = () => {
   }, [centerIndex]);
 
   const inStockCount = cards.filter(c => c.totalQty > 0).length;
+  const formatTime = (d: Date) =>
+    d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  /* ─────────────────────── JSX ─────────────────────── */
+  /* ─────────────────────────── JSX ─────────────────────────── */
   return (
     <div className="min-h-screen bg-[#F8F7F4]">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         * { font-family:'DM Sans',sans-serif; }
         .font-display { font-family:'Crimson Pro',Georgia,serif; }
-        .hero-bg {
-          background-image:
-            radial-gradient(circle at 18% 52%,rgba(28,54,28,.07) 0%,transparent 55%),
-            radial-gradient(circle at 82% 20%,rgba(28,54,28,.04) 0%,transparent 42%);
-        }
         .mil-grad  { background:linear-gradient(135deg,#1C361C 0%,#2E5230 60%,#1A3019 100%); }
         .gold-line { background:linear-gradient(135deg,#B8972E,#D4AF37,#9A7B1E); }
         @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
@@ -174,6 +191,8 @@ export const Home = () => {
         .d3{animation-delay:.40s;opacity:0}.d4{animation-delay:.55s;opacity:0}
         .no-scroll::-webkit-scrollbar{display:none}
         .no-scroll{-ms-overflow-style:none;scrollbar-width:none}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .spinning{animation:spin 1s linear infinite}
       `}</style>
 
       {/* ── HEADER ── */}
@@ -201,45 +220,49 @@ export const Home = () => {
         </div>
       </header>
 
-      {/* ── HERO ── */}
-      <section className="hero-bg relative overflow-hidden pt-24 pb-32 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 mb-6 fu d1">
-              <div className="w-8 gold-line" style={{ height: 2 }} />
-              <span className="text-xs font-semibold tracking-widest text-amber-700 uppercase">Armée Camerounaise</span>
-            </div>
-            <h1 className="font-display text-5xl sm:text-6xl font-bold text-gray-900 leading-tight mb-6 fu d2">
-              Catalogue des<br />
-              <span className="text-[#2E5230]">Tenues Militaires</span><br />
-              Réglementaires
-            </h1>
-            <p className="text-gray-600 text-lg leading-relaxed mb-10 max-w-xl fu d3">
-              Plateforme officielle de gestion et de présentation des uniformes de l'Armée Camerounaise.
-              Consultez notre catalogue complet et passez vos commandes en ligne.
-            </p>
-            <div className="flex items-center gap-4 fu d4">
-              <button onClick={scrollToCatalogue}
-                className="flex items-center gap-2 px-6 py-3 mil-grad text-white rounded-xl hover:opacity-90 transition-opacity font-medium">
-                Voir le catalogue <ArrowRight className="w-4 h-4" />
-              </button>
-              <button onClick={handleLoginClick}
-                className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
-                Espace admin
-              </button>
-            </div>
+      {/* ── HERO — texte centré, pas d'image ── */}
+      <section className="relative overflow-hidden py-28 px-6"
+        style={{ background: 'linear-gradient(160deg,#1C361C 0%,#2E5230 50%,#1A3019 100%)' }}>
+        {/* Motif décoratif subtil */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full border border-white/5" />
+          <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full border border-white/5" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full border border-white/[0.03]" />
+          <Shield className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 text-white/[0.03]" />
+        </div>
+
+        <div className="relative max-w-3xl mx-auto text-center">
+          <div className="flex items-center justify-center gap-2 mb-6 fu d1">
+            <div className="w-8 gold-line" style={{ height: 2 }} />
+            <span className="text-xs font-semibold tracking-widest text-amber-300 uppercase">Armée Camerounaise</span>
+            <div className="w-8 gold-line" style={{ height: 2 }} />
+          </div>
+
+          <h1 className="font-display text-5xl sm:text-6xl font-bold text-white leading-tight mb-6 fu d2">
+            Catalogue des<br />
+            <span style={{ color: '#D4AF37' }}>Tenues Militaires</span><br />
+            Réglementaires
+          </h1>
+
+          <p className="text-white/70 text-lg leading-relaxed mb-10 max-w-xl mx-auto fu d3">
+            Plateforme officielle de présentation des uniformes de l'Armée Camerounaise.
+            Consultez les disponibilités en temps réel et passez vos commandes.
+          </p>
+
+          <div className="flex items-center justify-center gap-4 fu d4">
+            <button onClick={scrollToCatalogue}
+              className="flex items-center gap-2 px-7 py-3.5 bg-white text-[#2E5230] rounded-xl hover:bg-gray-50 transition-colors font-semibold text-sm">
+              Voir le catalogue <ArrowRight className="w-4 h-4" />
+            </button>
+            <button onClick={handleLoginClick}
+              className="flex items-center gap-2 px-7 py-3.5 border border-white/30 text-white rounded-xl hover:bg-white/10 transition-colors font-medium text-sm">
+              Espace admin
+            </button>
           </div>
         </div>
-        <div className="absolute right-12 top-1/2 -translate-y-1/2 pointer-events-none hidden lg:flex items-center justify-center">
-          <div className="relative w-64 h-64">
-            <div className="absolute inset-0 border-2 border-[#2E5230]/10 rounded-full" />
-            <div className="absolute inset-8 border border-[#D4AF37]/20 rounded-full" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Shield className="w-28 h-28 text-[#2E5230]/10" />
-            </div>
-          </div>
-        </div>
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-gray-400">
+
+        {/* Flèche défilement */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-white/30">
           <span className="text-xs tracking-widest uppercase">Défiler</span>
           <ChevronDown className="w-4 h-4 animate-bounce" />
         </div>
@@ -265,7 +288,6 @@ export const Home = () => {
       {/* ── CATALOGUE CARROUSEL ── */}
       <section ref={catalogueRef} id="catalogue" className="py-20 overflow-hidden">
 
-        {/* En-tête */}
         <div className="max-w-7xl mx-auto px-6 mb-10">
           <div className="flex items-end justify-between flex-wrap gap-4">
             <div>
@@ -273,15 +295,33 @@ export const Home = () => {
                 <div className="w-8 gold-line" style={{ height: 2 }} />
                 <span className="text-xs font-semibold tracking-widest text-amber-700 uppercase">Catalogue officiel</span>
               </div>
-              <h2 className="font-display text-4xl font-bold text-gray-900 mb-4">Nos tenues réglementaires</h2>
-              {/* Catégorie dynamique */}
-              <div className="h-7 flex items-center">
-                {activeCat ? (
-                  <div className="flex items-center gap-2 transition-all duration-300">
+              <h2 className="font-display text-4xl font-bold text-gray-900 mb-3">Nos tenues réglementaires</h2>
+
+              {/* Catégorie active + indicateur sync */}
+              <div className="flex items-center gap-3 h-6">
+                {activeCat && (
+                  <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full mil-grad inline-block" />
                     <span className="text-sm font-semibold text-[#2E5230]">{activeCat}</span>
                   </div>
-                ) : null}
+                )}
+                <div className="flex items-center gap-1.5">
+                  {syncing
+                    ? <RefreshCw className="w-3 h-3 text-[#2E5230] spinning" />
+                    : <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                  }
+                  <span className="text-xs text-gray-400">
+                    {syncing ? 'Actualisation…' : lastSync ? `Mis à jour ${formatTime(lastSync)}` : ''}
+                  </span>
+                  <button
+                    onClick={() => { fetchUniformes(true); startPolling(); }}
+                    disabled={syncing || loading}
+                    title="Actualiser maintenant"
+                    className="p-1 rounded hover:bg-gray-100 text-gray-300 hover:text-[#2E5230] transition-colors disabled:opacity-30"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${syncing ? 'spinning' : ''}`} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -316,7 +356,7 @@ export const Home = () => {
         {loading ? (
           <div className="flex gap-4 pl-[calc(50vw-150px)]">
             {TENUES_MAITRE.map((_, i) => (
-              <div key={i} className="w-[300px] flex-shrink-0 h-[420px] bg-white rounded-2xl border border-gray-100 animate-pulse" />
+              <div key={i} className="w-[300px] flex-shrink-0 h-[380px] bg-white rounded-2xl border border-gray-100 animate-pulse" />
             ))}
           </div>
         ) : (
@@ -336,10 +376,6 @@ export const Home = () => {
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : 'bg-amber-50 text-amber-700 border-amber-200';
 
-              const statutCls = status.statut === 'Normal'
-                ? 'text-emerald-600 bg-emerald-50'
-                : 'text-rose-600 bg-rose-50';
-
               return (
                 <div
                   key={card.nom}
@@ -353,38 +389,31 @@ export const Home = () => {
                   className={`w-[300px] flex-shrink-0 bg-white rounded-2xl border overflow-hidden cursor-pointer
                     ${isCenter ? 'border-[#2E5230]/30 shadow-2xl' : 'border-gray-100 shadow-sm'}`}
                 >
-                  {/* Image / placeholder */}
-                  <div className="relative h-48 overflow-hidden bg-gray-100">
-                    {uniformImages[card.dbRecord?.id ?? ''] ? (
-                      <img
-                        src={uniformImages[card.dbRecord!.id]}
-                        alt={card.nom}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center mil-grad gap-3">
-                        <Shield className="w-14 h-14 text-white/15" />
-                        <span className="text-sm text-white/40 font-medium px-4 text-center leading-tight tracking-wide">
-                          {card.nom}
-                        </span>
-                      </div>
-                    )}
+                  {/* Bandeau visuel haut — pas d'image, fond dégradé militaire */}
+                  <div className="relative h-36 flex items-center justify-center mil-grad overflow-hidden">
+                    {/* Motif décoratif */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Shield className="w-20 h-20 text-white/10" />
+                    </div>
+                    <div className="absolute inset-0" style={{
+                      background: 'radial-gradient(circle at 30% 50%, rgba(255,255,255,0.05) 0%, transparent 60%)'
+                    }} />
+                    {/* Nom en surimpression */}
+                    <span className="relative z-10 text-white/60 text-xs font-semibold tracking-widest uppercase px-4 text-center leading-tight">
+                      {card.nom}
+                    </span>
 
                     {/* Badge disponibilité */}
                     <div className={`absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${badgeCls}`}>
-                      {status.inStock
-                        ? <CheckCircle className="w-3 h-3" />
-                        : <AlertCircle className="w-3 h-3" />}
+                      {status.inStock ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                       {status.label}
                     </div>
 
-                    {/* Trait doré sur la carte centrale */}
-                    {isCenter && (
-                      <div className="absolute bottom-0 inset-x-0 gold-line" style={{ height: 3 }} />
-                    )}
+                    {/* Trait doré carte centrale */}
+                    {isCenter && <div className="absolute bottom-0 inset-x-0 gold-line" style={{ height: 3 }} />}
                   </div>
 
-                  {/* Contenu */}
+                  {/* Contenu texte */}
                   <div className="p-5 space-y-3">
                     <h3 className="text-base font-bold text-gray-900 leading-tight">{card.nom}</h3>
 
@@ -397,31 +426,22 @@ export const Home = () => {
                         <Layers2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                         <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{card.type}</span>
                       </div>
-                      {/* Institution(s) de la BD si disponible */}
-                      {card.dbRecord?.institution && (
+                    </div>
+
+                    {/* Disponibilité — texte uniquement, jamais de quantité */}
+                    <div className="pt-2 border-t border-gray-100">
+                      {status.inStock ? (
                         <div className="flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                          <span className="text-xs text-gray-500 truncate">{card.dbRecord.institution}</span>
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                          <span className="text-xs text-emerald-700 font-medium">Disponible immédiatement</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                          <span className="text-xs text-amber-600 italic">Contactez l'atelier pour commander</span>
                         </div>
                       )}
                     </div>
-
-                    {/* Stock — affiché seulement si en stock */}
-                    {status.inStock ? (
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statutCls}`}>
-                          {status.statut}
-                        </span>
-                        <span className="text-xs font-bold text-gray-700 tabular-nums">
-                          {Math.floor(status.qty!)}&nbsp;
-                          <span className="font-normal text-gray-400">{status.unit}</span>
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="pt-2 border-t border-gray-100">
-                        <p className="text-xs text-amber-600 italic">Contactez l'atelier pour commander</p>
-                      </div>
-                    )}
 
                     <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{card.description}</p>
                   </div>
@@ -431,20 +451,12 @@ export const Home = () => {
           </div>
         )}
 
-        {/* 5 dots fixes */}
+        {/* Dots */}
         <div className="flex justify-center gap-2 mt-8">
           {cards.map((card, idx) => (
-            <button
-              key={card.nom}
-              onClick={() => setCenterIndex(idx)}
-              title={card.nom}
+            <button key={card.nom} onClick={() => setCenterIndex(idx)} title={card.nom}
               className="rounded-full transition-all duration-300"
-              style={{
-                width:      idx === centerIndex ? 28 : 8,
-                height:     8,
-                background: idx === centerIndex ? '#2E5230' : '#D1D5DB',
-              }}
-            />
+              style={{ width: idx === centerIndex ? 28 : 8, height: 8, background: idx === centerIndex ? '#2E5230' : '#D1D5DB' }} />
           ))}
         </div>
       </section>
@@ -471,7 +483,7 @@ export const Home = () => {
               { icon: <BarChart3 className="w-6 h-6" />, title: 'Rapports & analyses',   desc: 'Générez des rapports détaillés sur la production, les livraisons et les commandes. Export PDF disponible.' },
               { icon: <Layers className="w-6 h-6" />,    title: 'Gestion des commandes', desc: "Suivez le cycle complet de vos commandes, de la création jusqu'à la livraison, avec historique en temps réel." },
               { icon: <Users className="w-6 h-6" />,     title: 'Multi-utilisateurs',    desc: 'Deux profils distincts avec permissions adaptées au rôle de chaque opérateur dans la chaîne logistique.' },
-              { icon: <Award className="w-6 h-6" />,     title: 'Catalogue officiel',    desc: 'Gérez et publiez le catalogue des tenues réglementaires, avec photos et disponibilités mises à jour en temps réel.' },
+              { icon: <Award className="w-6 h-6" />,     title: 'Catalogue officiel',    desc: 'Gérez et publiez le catalogue des tenues réglementaires, avec disponibilités mises à jour en temps réel.' },
               { icon: <Settings className="w-6 h-6" />,  title: 'Configuration avancée', desc: 'Paramétrez les catégories, fournisseurs, clients et articles depuis une interface centralisée et intuitive.' },
             ].map((f, i) => (
               <div key={i} className="bg-[#F8F7F4] rounded-2xl p-6 border border-gray-100 hover:border-[#2E5230]/20 transition-colors">
