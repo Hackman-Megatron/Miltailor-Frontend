@@ -4,11 +4,10 @@
 
 ### 1️⃣ Backend (Terminal 1)
 ```bash
-cd src/backend
+cd .../backend
 npm install
 # Modifiez .env avec votre mot de passe MySQL (ligne DB_PASSWORD)
-npm run setup
-npm start
+npm run dev
 ```
 
 ### 2️⃣ Frontend (Terminal 2)

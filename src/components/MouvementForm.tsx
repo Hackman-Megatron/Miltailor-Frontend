@@ -10,29 +10,56 @@ interface MouvementFormProps {
   onCancel: () => void;
 }
 
-// Catégories prédéfinies avec leurs articles
+// ─── QuantiteInput défini HORS du composant parent ───────────────────────────
+// Si ce composant était déclaré à l'intérieur de MouvementForm, React le
+// recréérait à chaque render, détruisant le focus après chaque frappe.
+interface QuantiteInputProps {
+  value: string;
+  onChange: (val: string) => void;
+  label?: string;
+  required?: boolean;
+}
+function QuantiteInput({ value, onChange, label = 'Quantité', required = true }: QuantiteInputProps) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw === '' || /^\d+$/.test(raw)) onChange(raw);
+        }}
+        onFocus={(e) => e.target.select()}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
+        placeholder="Ex : 50"
+        autoComplete="off"
+      />
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CATEGORIES_ARTICLES = {
   'Tissus': ['Camouflés', 'Tenues claires', 'Trei gendarmerie', 'Vareuse', 'Tenue cafard', 'Thermocollant', 'Fond de poches', 'Doublure'],
   'Fils': ['Camouflés', 'Tenues claires', 'Trei gendarmerie', 'Vareuse', 'Tenue cafard', 'Thermocollant', 'Fond de poches', 'Doublure'],
   'Boutons': ['Boutons simples', 'Boutons à pression'],
   'Fermetures': ['Camouflés', 'Tenues claires', 'Trei gendarmerie', 'Vareuse', 'Tenue cafard'],
-  'Autres Fournitures': ['Élastiques', 'Velcro', 'Lacets', 'Étiquettes', 'Plastiques d\'emballage', 'Lames/découseurs', 'Viselines', 'Gros grains']
+  'Autres Fournitures': ['Élastiques', 'Velcro', 'Lacets', 'Étiquettes', "Plastiques d'emballage", 'Lames/découseurs', 'Viselines', 'Gros grains'],
 };
 
-// Articles pour les commandes (uniformes finis)
 const ARTICLES_COMMANDES = ['Camouflés', 'Tenues claires', 'Trei gendarmerie', 'Vareuse', 'Tenue cafard'];
 
-// Quantifications automatiques par catégorie
 const QUANTIFICATIONS_AUTO_CATEGORIE: { [key: string]: string } = {
   'Tissus': 'rouleaux',
   'Fils': 'rouleaux',
-  'Boutons': 'cartons'
+  'Boutons': 'cartons',
 };
 
-// Unités de mesure disponibles pour les catégories flexibles
 const UNITES_MESURE_FLEXIBLES = ['rouleaux', 'cartons', 'bobines', 'sacs', 'pièces', 'balots'];
-
-// Unités de mesure disponibles pour toutes les catégories
 const UNITES_MESURE = ['rouleaux', 'cartons', 'bobines', 'sacs', 'pièces', 'kg', 'mètres', 'balots'];
 
 export default function MouvementForm({ mouvement, onSubmit, onCancel }: MouvementFormProps) {
@@ -45,7 +72,12 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
   const [entreeInterneType, setEntreeInterneType] = useState<'commande' | 'hors_commande' | null>(null);
   const [showNewFournisseurForm, setShowNewFournisseurForm] = useState(false);
   const [newFournisseur, setNewFournisseur] = useState({ nom: '', email: '', telephone: '' });
-  
+
+  // Quantité en string pour permettre la saisie libre (vide → chiffres sans blocage)
+  const [quantiteRaw, setQuantiteRaw] = useState<string>(
+    mouvement?.quantite != null ? String(mouvement.quantite) : ''
+  );
+
   const [formData, setFormData] = useState<{
     type: string;
     fournisseur_id?: string;
@@ -66,7 +98,7 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
     categorie: '',
     article_nom: '',
     article_id: mouvement?.article_id || '',
-    quantite: mouvement?.quantite || 1,
+    quantite: mouvement?.quantite || 0,
     quantification: 'rouleaux',
     destination: '',
     notes: mouvement?.notes || '',
@@ -74,21 +106,14 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
     priorite: 'Normale',
   });
 
-  useEffect(() => {
-    loadArticles();
-    loadFournisseurs();
-  }, []);
+  useEffect(() => { loadArticles(); loadFournisseurs(); }, []);
 
   useEffect(() => {
-    if (formData.type === 'Entrée Interne' && entreeInterneType === 'commande') {
-      loadCommandesEnProduction();
-    } else if (formData.type === 'Sortie Externe') {
-      loadCommandesTerminees();
-    }
+    if (formData.type === 'Entrée Interne' && entreeInterneType === 'commande') loadCommandesEnProduction();
+    else if (formData.type === 'Sortie Externe') loadCommandesTerminees();
   }, [formData.type, entreeInterneType]);
 
   useEffect(() => {
-    // Mettre à jour les articles disponibles selon la catégorie
     if (formData.categorie && formData.type === 'Entrée Externe') {
       setAvailableArticles(CATEGORIES_ARTICLES[formData.categorie as keyof typeof CATEGORIES_ARTICLES] || []);
       setFormData(prev => ({ ...prev, article_nom: '' }));
@@ -96,86 +121,63 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
   }, [formData.categorie]);
 
   useEffect(() => {
-    // Définir automatiquement la quantification selon la catégorie sélectionnée
     if (formData.categorie && formData.type === 'Entrée Externe') {
       const uniteAuto = QUANTIFICATIONS_AUTO_CATEGORIE[formData.categorie];
-      if (uniteAuto) {
-        setFormData(prev => ({ ...prev, quantification: uniteAuto }));
-      }
+      if (uniteAuto) setFormData(prev => ({ ...prev, quantification: uniteAuto }));
     }
   }, [formData.categorie]);
+
+  const handleQuantiteChange = (raw: string) => {
+    setQuantiteRaw(raw);
+    setFormData(prev => ({ ...prev, quantite: raw === '' ? 0 : parseInt(raw, 10) }));
+  };
+
+  const syncQuantiteFromCommande = (qty: number) => {
+    setQuantiteRaw(String(qty));
+    setFormData(prev => ({ ...prev, quantite: qty }));
+  };
 
   const loadArticles = async () => {
     try {
       const response = await articlesService.getAll({ type: 'matiere_premiere' });
-      if (response.data && Array.isArray(response.data.data)) {
-        setArticles(response.data.data);
-      } else {
-        setArticles([]);
-      }
-    } catch (error) {
-      console.error('Error loading articles:', error);
-      setArticles([]);
-    }
+      setArticles(Array.isArray(response.data?.data) ? response.data.data : []);
+    } catch { setArticles([]); }
   };
 
   const loadFournisseurs = async () => {
     try {
       const response = await fournisseursService.getAll();
-      if (response.data && Array.isArray(response.data.data)) {
-        setFournisseurs(response.data.data);
-      } else {
-        setFournisseurs(response.data || []);
-      }
-    } catch (error) {
-      console.error('Error loading fournisseurs:', error);
-    }
+      setFournisseurs(Array.isArray(response.data?.data) ? response.data.data : response.data || []);
+    } catch { /* silencieux */ }
   };
 
   const loadCommandesEnProduction = async () => {
     try {
       const response = await commandesService.getAll();
-      const commandesData = response.data?.data || response.data || [];
-      const commandesFiltrees = commandesData.filter((c: Commande) => 
-        c.statut === 'En attente' || c.statut === 'En production'
-      );
-      setCommandes(commandesFiltrees);
-    } catch (error) {
-      console.error('Error loading commandes:', error);
-      setCommandes([]);
-    }
+      const data = response.data?.data || response.data || [];
+      setCommandes(data.filter((c: Commande) => c.statut === 'En attente' || c.statut === 'En production'));
+    } catch { setCommandes([]); }
   };
 
   const loadCommandesTerminees = async () => {
     try {
       const response = await commandesService.getAll();
-      const commandesData = response.data?.data || response.data || [];
-      setCommandes(commandesData.filter((c: Commande) => c.statut === 'Terminée'));
-    } catch (error) {
-      console.error('Error loading commandes:', error);
-    }
+      const data = response.data?.data || response.data || [];
+      setCommandes(data.filter((c: Commande) => c.statut === 'Terminée'));
+    } catch { /* silencieux */ }
   };
 
   const handleCreateFournisseur = async () => {
     if (!newFournisseur.nom.trim() || !newFournisseur.telephone.trim()) {
-      alert('Le nom et le téléphone sont requis');
-      return;
+      alert('Le nom et le téléphone sont requis'); return;
     }
-
     try {
       const response = await fournisseursService.create(newFournisseur);
-      const createdFournisseur = response.data.data || response.data;
-
-      // Ajouter le nouveau fournisseur à la liste
-      setFournisseurs([...fournisseurs, createdFournisseur]);
-
-      // Sélectionner automatiquement le nouveau fournisseur
-      setFormData({ ...formData, fournisseur_id: createdFournisseur.id });
-
-      // Réinitialiser le formulaire de création
+      const created = response.data.data || response.data;
+      setFournisseurs(prev => [...prev, created]);
+      setFormData(prev => ({ ...prev, fournisseur_id: created.id }));
       setNewFournisseur({ nom: '', email: '', telephone: '' });
       setShowNewFournisseurForm(false);
-
       alert('Fournisseur créé avec succès !');
     } catch (error: any) {
       alert(error.response?.data?.message || 'Erreur lors de la création du fournisseur');
@@ -183,109 +185,96 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
   };
 
   const handleTypeSelection = (type: string) => {
-    setFormData({ ...formData, type });
-
-    if (type === 'Entrée Externe') {
-      setCurrentStep('details');
-    } else if (type === 'Sortie Interne') {
-      setCurrentStep('details');
-    } else if (type === 'Entrée Interne' || type === 'Sortie Externe') {
-      setCurrentStep('commande');
-    }
+    setFormData(prev => ({ ...prev, type }));
+    setQuantiteRaw('');
+    if (type === 'Entrée Externe' || type === 'Sortie Interne') setCurrentStep('details');
+    else setCurrentStep('commande');
   };
 
   const handleEntreeInterneTypeSelection = (type: 'commande' | 'hors_commande') => {
     setEntreeInterneType(type);
-    if (type === 'hors_commande') {
-      setCurrentStep('details');
-    }
+    if (type === 'hors_commande') setCurrentStep('details');
   };
 
   const handleCommandeSelection = (commandeId: string) => {
-    const selectedCommande = commandes.find(c => c.id === commandeId);
-    if (selectedCommande) {
-      setFormData({
-        ...formData,
+    const selected = commandes.find(c => c.id === commandeId);
+    if (selected) {
+      setFormData(prev => ({
+        ...prev,
         commande_id: commandeId,
-        article_nom: selectedCommande.article,
-        quantite: selectedCommande.quantite,
-        institution: selectedCommande.institution,
-      });
+        article_nom: selected.article,
+        quantite: selected.quantite,
+        institution: selected.institution,
+      }));
+      syncQuantiteFromCommande(selected.quantite);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validation selon le type
+    const quantiteParsed = parseInt(quantiteRaw, 10);
+
     if (formData.type === 'Entrée Externe') {
-      if (!formData.fournisseur_id || !formData.categorie || !formData.article_nom) {
-        alert('Veuillez remplir tous les champs obligatoires');
-        return;
+      if (!formData.categorie || !formData.article_nom) {
+        alert("Veuillez remplir la catégorie et l'article"); return;
       }
-    } else if (formData.type === 'Sortie Interne') {
-      if (!formData.article_nom || !formData.categorie || !formData.destination) {
-        alert('Veuillez spécifier l\'article, sa catégorie et la destination');
-        return;
+      if (!quantiteRaw || quantiteParsed <= 0) {
+        alert('Veuillez saisir une quantité valide (supérieure à 0)'); return;
       }
-      
-      const articleEnStock = articles.find(
-        a => a.nom === formData.article_nom && a.categorie === formData.categorie
-      );
-      
-      if (!articleEnStock) {
-        alert('Cet article n\'existe pas en stock. Impossible d\'effectuer une sortie interne.');
-        return;
-      }
-      
-      if (articleEnStock.quantite < formData.quantite) {
-        alert(`Quantité insuffisante en stock. Disponible: ${articleEnStock.quantite} ${articleEnStock.quantification}`);
-        return;
-      }
-    } else if (formData.type === 'Entrée Interne') {
-      if (entreeInterneType === 'commande' && !formData.commande_id) {
-        alert('Veuillez sélectionner une commande');
-        return;
-      }
-      if (entreeInterneType === 'hors_commande' && (!formData.institution || !formData.article_nom || !formData.quantite)) {
-        alert('Veuillez remplir tous les champs obligatoires');
-        return;
-      }
-    } else if (formData.type === 'Sortie Externe') {
-      if (!formData.commande_id) {
-        alert('Veuillez sélectionner une commande');
-        return;
-      }
+      // fournisseur_id validé à l'étape fournisseur (required sur le select)
     } else if (formData.type === 'Sortie Interne') {
       if (!formData.article_nom || !formData.categorie) {
-        alert('Veuillez spécifier l\'article et sa catégorie');
-        return;
+        alert("Veuillez spécifier l'article et sa catégorie"); return;
       }
+      if (!formData.destination) {
+        alert('Veuillez spécifier la destination'); return;
+      }
+      if (!quantiteRaw || quantiteParsed <= 0) {
+        alert('Veuillez saisir une quantité valide (supérieure à 0)'); return;
+      }
+      const articleEnStock = articles.find(a => a.nom === formData.article_nom && a.categorie === formData.categorie);
+      if (!articleEnStock) {
+        alert("Cet article n'existe pas en stock. Impossible d'effectuer une sortie interne."); return;
+      }
+      if (articleEnStock.quantite < quantiteParsed) {
+        alert(`Quantité insuffisante en stock. Disponible: ${articleEnStock.quantite} ${articleEnStock.quantification}`); return;
+      }
+      // destination facultative — aucune validation
+    } else if (formData.type === 'Entrée Interne') {
+      if (entreeInterneType === 'commande' && !formData.commande_id) {
+        alert('Veuillez sélectionner une commande'); return;
+      }
+      if (entreeInterneType === 'hors_commande') {
+        if (!formData.institution || !formData.article_nom) {
+          alert("Veuillez remplir l'institution et l'article"); return;
+        }
+        if (!quantiteRaw || quantiteParsed <= 0) {
+          alert('Veuillez saisir une quantité valide (supérieure à 0)'); return;
+        }
+      }
+    } else if (formData.type === 'Sortie Externe') {
+      if (!formData.commande_id) { alert('Veuillez sélectionner une commande'); return; }
     }
-    
+
     setLoading(true);
     try {
       const submitData: any = {
         type: formData.type,
-        quantite: formData.quantite,
-        notes: formData.notes || ''
+        quantite: isNaN(quantiteParsed) ? formData.quantite : quantiteParsed,
+        notes: formData.notes || '',
       };
 
       if (formData.type === 'Entrée Externe') {
-        submitData.fournisseur_id = formData.fournisseur_id;
+      if (formData.fournisseur_id) submitData.fournisseur_id = formData.fournisseur_id;
         submitData.categorie = formData.categorie;
         submitData.article_nom = formData.article_nom;
         submitData.unite_mesure = formData.quantification;
       } else if (formData.type === 'Sortie Interne') {
         submitData.article_nom = formData.article_nom;
         submitData.categorie = formData.categorie;
-        submitData.destination = formData.destination;
-        const article = articles.find(
-          a => a.nom === formData.article_nom && a.categorie === formData.categorie
-        );
-        if (article) {
-          submitData.article_id = article.id;
-        }
+        if (formData.destination) submitData.destination = formData.destination;
+        const article = articles.find(a => a.nom === formData.article_nom && a.categorie === formData.categorie);
+        if (article) submitData.article_id = article.id;
       } else if (formData.type === 'Entrée Interne') {
         if (entreeInterneType === 'commande') {
           submitData.commande_id = formData.commande_id;
@@ -311,15 +300,13 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
   const renderStepIndicator = () => {
     const steps = [
       { id: 'type', label: 'Type de mouvement' },
-      { id: 'commande', label: formData.type === 'Entrée Interne' ? 'Type d\'entrée' : 'Sélection commande' },
+      { id: 'commande', label: formData.type === 'Entrée Interne' ? "Type d'entrée" : 'Sélection commande' },
       { id: 'details', label: 'Détails' },
-      { id: 'fournisseur', label: 'Fournisseur' }
+      { id: 'fournisseur', label: 'Fournisseur' },
     ];
-
-    const activeSteps = formData.type === 'Entrée Externe'
-      ? ['type', 'details', 'fournisseur']
-      : formData.type === 'Sortie Interne'
-      ? ['type', 'details']
+    const activeSteps =
+      formData.type === 'Entrée Externe' ? ['type', 'details', 'fournisseur']
+      : formData.type === 'Sortie Interne' ? ['type', 'details']
       : ['type', 'commande', 'details'];
 
     return (
@@ -328,16 +315,11 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
           const step = steps.find(s => s.id === stepId);
           const isActive = currentStep === stepId;
           const isPast = activeSteps.indexOf(currentStep) > index;
-
           return (
             <div key={stepId} className="flex items-center">
-              {index > 0 && (
-                <div className={`w-12 h-0.5 ${isPast || isActive ? 'bg-military-700' : 'bg-gray-200'}`}></div>
-              )}
+              {index > 0 && <div className={`w-12 h-0.5 ${isPast || isActive ? 'bg-military-700' : 'bg-gray-200'}`} />}
               <div className={`flex items-center ${isActive ? 'text-military-700' : isPast ? 'text-military-500' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  isActive ? 'bg-military-700 text-white' : isPast ? 'bg-military-500 text-white' : 'bg-gray-200'
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${isActive ? 'bg-military-700 text-white' : isPast ? 'bg-military-500 text-white' : 'bg-gray-200'}`}>
                   {index + 1}
                 </div>
                 <span className="ml-2 text-xs font-medium hidden md:inline">{step?.label}</span>
@@ -349,37 +331,31 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
     );
   };
 
-  // Vérifier si la quantification est automatique
   const isQuantificationAuto = formData.categorie && QUANTIFICATIONS_AUTO_CATEGORIE[formData.categorie];
+  const getUnitesMesureDisponibles = () =>
+    (formData.categorie === 'Fermetures' || formData.categorie === 'Autres Fournitures')
+      ? UNITES_MESURE_FLEXIBLES : UNITES_MESURE;
 
-  // Déterminer les unités de mesure disponibles selon la catégorie
-  const getUnitesMesureDisponibles = () => {
-    if (formData.categorie === 'Fermetures' || formData.categorie === 'Autres Fournitures') {
-      return UNITES_MESURE_FLEXIBLES;
-    }
-    return UNITES_MESURE;
-  };
+  const CheckmarkBadge = () => (
+    <div className="w-6 h-6 bg-military-700 rounded-full flex items-center justify-center ml-2 shrink-0">
+      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {renderStepIndicator()}
 
-      {/* ÉTAPE 1: Sélection du type de mouvement */}
+      {/* ── ÉTAPE 1 : Type ────────────────────────────────────────────────── */}
       {currentStep === 'type' && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Sélectionnez le type de mouvement</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {['Entrée Externe', 'Entrée Interne', 'Sortie Interne', 'Sortie Externe'].map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => handleTypeSelection(type)}
-                className={`p-6 border-2 rounded-lg text-left transition-all ${
-                  formData.type === type
-                    ? 'border-military-700 bg-military-50'
-                    : 'border-gray-200 hover:border-military-300'
-                }`}
-              >
+              <button key={type} type="button" onClick={() => handleTypeSelection(type)}
+                className={`p-6 border-2 rounded-lg text-left transition-all ${formData.type === type ? 'border-military-700 bg-military-50' : 'border-gray-200 hover:border-military-300'}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-1">{type}</h4>
@@ -387,16 +363,10 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
                       {type === 'Entrée Externe' && 'Réception de matières premières depuis un fournisseur'}
                       {type === 'Entrée Interne' && 'Production terminée (sur commande ou hors commande)'}
                       {type === 'Sortie Interne' && 'Utilisation de matières premières pour production'}
-                      {type === 'Sortie Externe' && 'Livraison d\'une commande terminée'}
+                      {type === 'Sortie Externe' && "Livraison d'une commande terminée"}
                     </p>
                   </div>
-                  {formData.type === type && (
-                    <div className="w-6 h-6 bg-military-700 rounded-full flex items-center justify-center">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
+                  {formData.type === type && <CheckmarkBadge />}
                 </div>
               </button>
             ))}
@@ -404,35 +374,22 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
         </div>
       )}
 
-      {/* ÉTAPE 2: Pour Entrée Interne - Type d'entrée */}
+      {/* ── ÉTAPE 2a : Entrée Interne — choix type ──────────────────────── */}
       {currentStep === 'commande' && formData.type === 'Entrée Interne' && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Type d'entrée interne</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={() => handleEntreeInterneTypeSelection('commande')}
-              className={`p-6 border-2 rounded-lg text-left transition-all ${
-                entreeInterneType === 'commande'
-                  ? 'border-military-700 bg-military-50'
-                  : 'border-gray-200 hover:border-military-300'
-              }`}
-            >
-              <h4 className="font-semibold text-gray-900 mb-1">Entrée sur commande</h4>
-              <p className="text-sm text-gray-600">Production d'une commande existante</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleEntreeInterneTypeSelection('hors_commande')}
-              className={`p-6 border-2 rounded-lg text-left transition-all ${
-                entreeInterneType === 'hors_commande'
-                  ? 'border-military-700 bg-military-50'
-                  : 'border-gray-200 hover:border-military-300'
-              }`}
-            >
-              <h4 className="font-semibold text-gray-900 mb-1">Entrée hors commande</h4>
-              <p className="text-sm text-gray-600">Production anticipée sans commande</p>
-            </button>
+            {(['commande', 'hors_commande'] as const).map((t) => (
+              <button key={t} type="button" onClick={() => handleEntreeInterneTypeSelection(t)}
+                className={`p-6 border-2 rounded-lg text-left transition-all ${entreeInterneType === t ? 'border-military-700 bg-military-50' : 'border-gray-200 hover:border-military-300'}`}>
+                <h4 className="font-semibold text-gray-900 mb-1">
+                  {t === 'commande' ? 'Entrée sur commande' : 'Entrée hors commande'}
+                </h4>
+                <p className="text-sm text-gray-600">
+                  {t === 'commande' ? "Production d'une commande existante" : 'Production anticipée sans commande'}
+                </p>
+              </button>
+            ))}
           </div>
 
           {entreeInterneType === 'commande' && (
@@ -441,28 +398,16 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
                 Sélectionner une commande <span className="text-red-500">*</span>
               </label>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {commandes.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    Aucune commande en attente ou en production
-                  </div>
-                ) : (
-                  commandes.map((commande) => (
-                    <div
-                      key={commande.id}
-                      onClick={() => handleCommandeSelection(commande.id)}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                        formData.commande_id === commande.id
-                          ? 'border-military-700 bg-military-50'
-                          : 'border-gray-200 hover:border-military-300'
-                      }`}
-                    >
+                {commandes.length === 0
+                  ? <div className="text-center py-8 text-gray-500">Aucune commande en attente ou en production</div>
+                  : commandes.map((commande) => (
+                    <div key={commande.id} onClick={() => handleCommandeSelection(commande.id)}
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${formData.commande_id === commande.id ? 'border-military-700 bg-military-50' : 'border-gray-200 hover:border-military-300'}`}>
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-semibold text-military-700">{commande.numero}</span>
-                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                              commande.statut === 'En attente' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'
-                            }`}>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${commande.statut === 'En attente' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
                               {commande.statut}
                             </span>
                           </div>
@@ -473,161 +418,85 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
                             {commande.client_nom && <p><strong>Client:</strong> {commande.client_nom}</p>}
                           </div>
                         </div>
-                        {formData.commande_id === commande.id && (
-                          <div className="w-6 h-6 bg-military-700 rounded-full flex items-center justify-center ml-2">
-                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        )}
+                        {formData.commande_id === commande.id && <CheckmarkBadge />}
                       </div>
                     </div>
-                  ))
-                )}
+                  ))}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ÉTAPE 2: Pour Sortie Externe - Sélection commande */}
+      {/* ── ÉTAPE 2b : Sortie Externe — sélection commande ──────────────── */}
       {currentStep === 'commande' && formData.type === 'Sortie Externe' && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Sélectionner une commande à livrer</h3>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {commandes.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                Aucune commande terminée disponible pour livraison
-              </div>
-            ) : (
-              commandes.map((commande) => (
-                <div
-                  key={commande.id}
-                  onClick={() => handleCommandeSelection(commande.id)}
-                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                    formData.commande_id === commande.id
-                      ? 'border-military-700 bg-military-50'
-                      : 'border-gray-200 hover:border-military-300'
-                  }`}
-                >
+            {commandes.length === 0
+              ? <div className="text-center py-8 text-gray-500">Aucune commande terminée disponible pour livraison</div>
+              : commandes.map((commande) => (
+                <div key={commande.id} onClick={() => handleCommandeSelection(commande.id)}
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${formData.commande_id === commande.id ? 'border-military-700 bg-military-50' : 'border-gray-200 hover:border-military-300'}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-military-700">{commande.numero}</span>
-                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                          Terminée
-                        </span>
+                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">Terminée</span>
                       </div>
                       <div className="text-sm text-gray-600">
                         <p><strong>Institution:</strong> {commande.institution}</p>
                         <p><strong>Article:</strong> {commande.article}</p>
                         <p><strong>Quantité:</strong> {commande.quantite} unités</p>
                         {commande.client_nom && <p><strong>Client:</strong> {commande.client_nom}</p>}
-                        {commande.date_livraison_prevue && (
-                          <p><strong>Livraison prévue:</strong> {formatDate(commande.date_livraison_prevue)}</p>
-                        )}
+                        {commande.date_livraison_prevue && <p><strong>Livraison prévue:</strong> {formatDate(commande.date_livraison_prevue)}</p>}
                       </div>
                     </div>
-                    {formData.commande_id === commande.id && (
-                      <div className="w-6 h-6 bg-military-700 rounded-full flex items-center justify-center ml-2">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    )}
+                    {formData.commande_id === commande.id && <CheckmarkBadge />}
                   </div>
                 </div>
-              ))
-            )}
+              ))}
           </div>
         </div>
       )}
 
-      {/* ÉTAPE 2: Détails du mouvement (sans fournisseur pour Entrée Externe) */}
+      {/* ── ÉTAPE détails ───────────────────────────────────────────────── */}
       {currentStep === 'details' && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Détails du mouvement</h3>
 
-          {/* Entrée Externe - Sans fournisseur */}
+          {/* Entrée Externe */}
           {formData.type === 'Entrée Externe' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Catégorie <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.categorie}
-                  onChange={(e) => setFormData({ ...formData, categorie: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie <span className="text-red-500">*</span></label>
+                <select required value={formData.categorie}
+                  onChange={(e) => setFormData(prev => ({ ...prev, categorie: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
                   <option value="">Sélectionner une catégorie</option>
-                  {Object.keys(CATEGORIES_ARTICLES).map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
+                  {Object.keys(CATEGORIES_ARTICLES).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Article <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.article_nom}
-                  onChange={(e) => setFormData({ ...formData, article_nom: e.target.value })}
-                  disabled={!formData.categorie}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Article <span className="text-red-500">*</span></label>
+                <select required value={formData.article_nom} disabled={!formData.categorie}
+                  onChange={(e) => setFormData(prev => ({ ...prev, article_nom: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100">
                   <option value="">Sélectionner un article</option>
-                  {availableArticles.map((article) => (
-                    <option key={article} value={article}>
-                      {article}
-                    </option>
-                  ))}
+                  {availableArticles.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantification <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.quantification}
-                  onChange={(e) => setFormData({ ...formData, quantification: e.target.value })}
-                  disabled={!!isQuantificationAuto}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
-                >
-                  {getUnitesMesureDisponibles().map((unite) => (
-                    <option key={unite} value={unite}>
-                      {unite.charAt(0).toUpperCase() + unite.slice(1)}
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantification <span className="text-red-500">*</span></label>
+                <select required value={formData.quantification} disabled={!!isQuantificationAuto}
+                  onChange={(e) => setFormData(prev => ({ ...prev, quantification: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100 disabled:cursor-not-allowed">
+                  {getUnitesMesureDisponibles().map(u => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
                 </select>
-                {isQuantificationAuto && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Quantification automatique pour cet article
-                  </p>
-                )}
+                {isQuantificationAuto && <p className="text-xs text-gray-500 mt-1">Quantification automatique pour cet article</p>}
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantité <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  step="1"
-                  value={formData.quantite}
-                  onChange={(e) => setFormData({ ...formData, quantite: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                />
-              </div>
+              {/* ✅ Champ quantité stable — Entrée Externe */}
+              <QuantiteInput value={quantiteRaw} onChange={handleQuantiteChange} />
             </div>
           )}
 
@@ -635,170 +504,88 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
           {formData.type === 'Sortie Interne' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Catégorie <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.categorie}
-                  onChange={(e) => setFormData({ ...formData, categorie: e.target.value, article_nom: '' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie <span className="text-red-500">*</span></label>
+                <select required value={formData.categorie}
+                  onChange={(e) => setFormData(prev => ({ ...prev, categorie: e.target.value, article_nom: '' }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
                   <option value="">Sélectionner une catégorie</option>
-                  {[...new Set(articles.map(a => a.categorie))].map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
+                  {[...new Set(articles.map(a => a.categorie))].map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Article <span className="text-red-500">*</span></label>
+                <select required value={formData.article_nom} disabled={!formData.categorie}
+                  onChange={(e) => setFormData(prev => ({ ...prev, article_nom: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100">
+                  <option value="">Sélectionner un article</option>
+                  {articles.filter(a => a.categorie === formData.categorie).map(a => (
+                    <option key={a.id} value={a.nom}>{a.nom} (Stock: {a.quantite} {a.quantification})</option>
                   ))}
                 </select>
               </div>
-
+              {/* ✅ Champ quantité stable — Sortie Interne */}
+              <QuantiteInput value={quantiteRaw} onChange={handleQuantiteChange} />
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Article <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.article_nom}
-                  onChange={(e) => setFormData({ ...formData, article_nom: e.target.value })}
-                  disabled={!formData.categorie}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none disabled:bg-gray-100"
-                >
-                  <option value="">Sélectionner un article</option>
-                  {articles
-                    .filter(a => a.categorie === formData.categorie)
-                    .map((article) => (
-                      <option key={article.id} value={article.nom}>
-                        {article.nom} (Stock: {article.quantite} {article.quantification})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantité <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  step="1"
-                  value={formData.quantite}
-                  onChange={(e) => setFormData({ ...formData, quantite: parseInt(e.target.value) || 1 })}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Destination <span className="text-red-500">*</span></label>
+                <input type="text" required value={formData.destination}
+                  onChange={(e) => setFormData(prev => ({ ...prev, destination: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                />
+                  placeholder="Ex : Atelier de production" />
               </div>
-
             </div>
           )}
 
-          {/* Entrée Interne - Hors Commande */}
+          {/* Entrée Interne — Hors commande */}
           {formData.type === 'Entrée Interne' && entreeInterneType === 'hors_commande' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Institution <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.institution}
-                  onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Institution <span className="text-red-500">*</span></label>
+                <select required value={formData.institution}
+                  onChange={(e) => setFormData(prev => ({ ...prev, institution: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
                   <option value="">Sélectionner une institution</option>
-                  <option value="Forêt">Forêt</option>
-                  <option value="Sahel">Sahel</option>
-                  <option value="Sapeurs-pompiers">Sapeurs-pompiers</option>
-                  <option value="Pompiers">Pompiers</option>
-                  <option value="Gendarmerie">Gendarmerie</option>
-                  <option value="Armée">Armée</option>
-                  <option value="Air">Air</option>
-                  <option value="Marine">Marine</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Article <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.article_nom}
-                  onChange={(e) => setFormData({ ...formData, article_nom: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                >
-                  <option value="">Sélectionner un article</option>
-                  {ARTICLES_COMMANDES.map((article) => (
-                    <option key={article} value={article}>
-                      {article}
-                    </option>
+                  {['Forêt', 'Sahel', 'Sapeurs-pompiers', 'Pompiers', 'Gendarmerie', 'Armée', 'Air', 'Marine'].map(i => (
+                    <option key={i} value={i}>{i}</option>
                   ))}
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantité <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  step="1"
-                  value={formData.quantite}
-                  onChange={(e) => setFormData({ ...formData, quantite: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Priorité
-                </label>
-                <select
-                  value={formData.priorite}
-                  onChange={(e) => setFormData({ ...formData, priorite: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                >
-                  <option value="Basse">Basse</option>
-                  <option value="Normale">Normale</option>
-                  <option value="Haute">Haute</option>
-                  <option value="Urgente">Urgente</option>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Article <span className="text-red-500">*</span></label>
+                <select required value={formData.article_nom}
+                  onChange={(e) => setFormData(prev => ({ ...prev, article_nom: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
+                  <option value="">Sélectionner un article</option>
+                  {ARTICLES_COMMANDES.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
-
+              {/* ✅ Champ quantité stable — Entrée Interne hors commande */}
+              <QuantiteInput value={quantiteRaw} onChange={handleQuantiteChange} />
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Date de livraison prévue
-                </label>
-                <input
-                  type="date"
-                  value={formData.date_livraison_prevue}
-                  onChange={(e) => setFormData({ ...formData, date_livraison_prevue: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Priorité</label>
+                <select value={formData.priorite}
+                  onChange={(e) => setFormData(prev => ({ ...prev, priorite: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
+                  {['Basse', 'Normale', 'Haute', 'Urgente'].map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date de livraison prévue</label>
+                <input type="date" value={formData.date_livraison_prevue}
+                  onChange={(e) => setFormData(prev => ({ ...prev, date_livraison_prevue: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none" />
               </div>
             </div>
           )}
 
-          {/* Notes - Pour tous les types sauf Entrée Externe (qui va à l'étape fournisseur) */}
           {formData.type !== 'Entrée Externe' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea value={formData.notes} rows={3}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none resize-none"
-                  placeholder="Notes additionnelles..."
-                />
+                  placeholder="Notes additionnelles..." />
               </div>
-
-              {/* Info sur la référence automatique */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">
                   <span className="font-semibold">ℹ️ Information :</span> La référence du mouvement sera générée automatiquement de manière chronologique.
@@ -809,43 +596,26 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
         </div>
       )}
 
-      {/* ÉTAPE 3: Sélection du fournisseur (Entrée Externe seulement) */}
+      {/* ── ÉTAPE fournisseur — facultatif ──────────────────────────────── */}
       {currentStep === 'fournisseur' && formData.type === 'Entrée Externe' && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Sélection du fournisseur</h3>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fournisseur <span className="text-red-500">*</span>
-              </label>
-              <select
-                required
-                value={formData.fournisseur_id}
-                onChange={(e) => setFormData({ ...formData, fournisseur_id: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-              >
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur <span className="text-red-500">*</span></label>
+              <select required value={formData.fournisseur_id}
+                onChange={(e) => setFormData(prev => ({ ...prev, fournisseur_id: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none">
                 <option value="">Sélectionner un fournisseur</option>
-                {fournisseurs.map((fournisseur) => (
-                  <option key={fournisseur.id} value={fournisseur.id}>
-                    {fournisseur.nom}
-                  </option>
-                ))}
+                {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.nom}</option>)}
               </select>
             </div>
 
-            {/* Option pour créer un nouveau fournisseur */}
             <div className="border-t pt-4">
               <p className="text-sm text-gray-600 mb-3">Le fournisseur n'est pas dans la liste ?</p>
-              <button
-                type="button"
-                onClick={() => setShowNewFournisseurForm(!showNewFournisseurForm)}
-                className={`w-full px-4 py-2 border-2 border-dashed rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                  showNewFournisseurForm
-                    ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                    : 'border-military-300 text-military-700 hover:bg-military-50'
-                }`}
-              >
+              <button type="button" onClick={() => setShowNewFournisseurForm(!showNewFournisseurForm)}
+                className={`w-full px-4 py-2 border-2 border-dashed rounded-lg transition-colors flex items-center justify-center gap-2 ${showNewFournisseurForm ? 'border-gray-300 text-gray-700 hover:bg-gray-50' : 'border-military-300 text-military-700 hover:bg-military-50'}`}>
                 <Plus className="w-4 h-4" />
                 {showNewFournisseurForm ? 'Annuler' : 'Créer un nouveau fournisseur'}
               </button>
@@ -856,46 +626,28 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
                 <h4 className="font-medium text-gray-900 mb-3">Nouveau fournisseur</h4>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom du fournisseur <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newFournisseur.nom}
-                      onChange={(e) => setNewFournisseur({ ...newFournisseur, nom: e.target.value })}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom <span className="text-red-500">*</span></label>
+                    <input type="text" value={newFournisseur.nom}
+                      onChange={(e) => setNewFournisseur(prev => ({ ...prev, nom: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                      placeholder="Ex: Entreprise ABC"
-                    />
+                      placeholder="Ex: Entreprise ABC" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Téléphone <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={newFournisseur.telephone}
-                      onChange={(e) => setNewFournisseur({ ...newFournisseur, telephone: e.target.value })}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone <span className="text-red-500">*</span></label>
+                    <input type="tel" value={newFournisseur.telephone}
+                      onChange={(e) => setNewFournisseur(prev => ({ ...prev, telephone: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                      placeholder="+237 XXX XXX XXX"
-                    />
+                      placeholder="+237 XXX XXX XXX" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={newFournisseur.email}
-                      onChange={(e) => setNewFournisseur({ ...newFournisseur, email: e.target.value })}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" value={newFournisseur.email}
+                      onChange={(e) => setNewFournisseur(prev => ({ ...prev, email: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none"
-                      placeholder="contact@entreprise.com"
-                    />
+                      placeholder="contact@entreprise.com" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCreateFournisseur}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
+                  <button type="button" onClick={handleCreateFournisseur}
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                     Créer le fournisseur
                   </button>
                 </div>
@@ -903,21 +655,14 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
             )}
           </div>
 
-          {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={3}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea value={formData.notes} rows={3}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-military-500 focus:border-transparent outline-none resize-none"
-              placeholder="Notes additionnelles..."
-            />
+              placeholder="Notes additionnelles..." />
           </div>
 
-          {/* Info sur la référence automatique */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-sm text-blue-800">
               <span className="font-semibold">ℹ️ Information :</span> La référence du mouvement sera générée automatiquement de manière chronologique.
@@ -926,21 +671,14 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
         </div>
       )}
 
-      {/* Boutons de navigation */}
+      {/* ── Navigation ──────────────────────────────────────────────────── */}
       <div className="flex justify-between pt-4 border-t border-gray-200">
-        <button
-          type="button"
+        <button type="button" disabled={loading}
           onClick={() => {
             if (currentStep === 'details') {
-              if (formData.type === 'Entrée Interne' && entreeInterneType === 'hors_commande') {
-                setCurrentStep('commande');
-              } else if (formData.type === 'Entrée Externe') {
-                setCurrentStep('type');
-              } else if (formData.type === 'Sortie Interne') {
-                setCurrentStep('type');
-              } else {
-                setCurrentStep('commande');
-              }
+              if (formData.type === 'Entrée Interne' && entreeInterneType === 'hors_commande') setCurrentStep('commande');
+              else if (formData.type === 'Entrée Externe' || formData.type === 'Sortie Interne') setCurrentStep('type');
+              else setCurrentStep('commande');
             } else if (currentStep === 'commande') {
               setCurrentStep('type');
             } else if (currentStep === 'fournisseur') {
@@ -949,26 +687,14 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
               onCancel();
             }
           }}
-          disabled={loading}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
+          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
           {currentStep === 'type' ? 'Annuler' : 'Précédent'}
         </button>
 
         {currentStep === 'type' && formData.type && (
-          <button
-            type="button"
-            onClick={() => {
-              if (formData.type === 'Entrée Externe') {
-                setCurrentStep('details');
-              } else if (formData.type === 'Sortie Interne') {
-                setCurrentStep('details');
-              } else {
-                setCurrentStep('commande');
-              }
-            }}
-            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors"
-          >
+          <button type="button"
+            onClick={() => { if (formData.type === 'Entrée Externe' || formData.type === 'Sortie Interne') setCurrentStep('details'); else setCurrentStep('commande'); }}
+            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors">
             Suivant
           </button>
         )}
@@ -976,25 +702,16 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
         {currentStep === 'commande' && (
           <>
             {formData.type === 'Entrée Interne' && entreeInterneType && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (entreeInterneType === 'hors_commande' || formData.commande_id) {
-                    setCurrentStep('details');
-                  }
-                }}
+              <button type="button"
+                onClick={() => { if (entreeInterneType === 'hors_commande' || formData.commande_id) setCurrentStep('details'); }}
                 disabled={entreeInterneType === 'commande' && !formData.commande_id}
-                className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+                className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {entreeInterneType === 'commande' ? 'Valider la sélection' : 'Suivant'}
               </button>
             )}
             {formData.type === 'Sortie Externe' && formData.commande_id && (
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
+              <button type="submit" disabled={loading}
+                className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2">
                 {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 Enregistrer la livraison
               </button>
@@ -1003,35 +720,26 @@ export default function MouvementForm({ mouvement, onSubmit, onCancel }: Mouveme
         )}
 
         {currentStep === 'details' && formData.type === 'Entrée Externe' && (
-          <button
-            type="button"
-            onClick={() => setCurrentStep('fournisseur')}
-            disabled={!formData.categorie || !formData.article_nom || !formData.quantite}
-            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button type="button" onClick={() => setCurrentStep('fournisseur')}
+            disabled={!formData.categorie || !formData.article_nom || !quantiteRaw || parseInt(quantiteRaw, 10) <= 0}
+            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             Suivant
           </button>
         )}
 
         {currentStep === 'details' && formData.type !== 'Entrée Externe' && (
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
+          <button type="submit" disabled={loading}
+            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2">
             {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             {mouvement ? 'Modifier le mouvement' : 'Enregistrer le mouvement'}
           </button>
         )}
 
         {currentStep === 'fournisseur' && formData.type === 'Entrée Externe' && (
-          <button
-            type="submit"
-            disabled={loading || !formData.fournisseur_id}
-            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
+          <button type="submit" disabled={loading || !formData.fournisseur_id}
+            className="px-4 py-2 bg-military-700 text-white rounded-lg hover:bg-military-600 transition-colors disabled:opacity-50 flex items-center gap-2">
             {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            {mouvement ? 'Modifier le mouvement' : 'Enregistrer l\'entrée externe'}
+            {mouvement ? 'Modifier le mouvement' : "Enregistrer l'entrée externe"}
           </button>
         )}
       </div>
